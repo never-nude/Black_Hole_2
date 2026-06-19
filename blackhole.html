@@ -181,7 +181,7 @@
     <div class="row"><label>Labels</label><button id="btnLabels" class="toggle on">On</button></div>
     <div class="row"><label>Infalling gas</label><button id="btnInfall" class="toggle on">On</button></div>
     <div class="row"><label>Gravity well</label><button id="btnWell" class="toggle on" style="border-color: rgba(124,207,255,0.5); color:#7ccfff;">On</button></div>
-    <div class="row"><label>Magnetic field</label><button id="btnMag" class="toggle on" style="border-color: rgba(199,123,255,0.5); color:#c77bff;">On</button></div>
+    <div class="row"><label>Magnetic field</label><button id="btnMag" class="toggle" style="border-color: rgba(199,123,255,0.5); color:#c77bff;">Off</button></div>
     <div class="row"><label>Fall into BH</label><button id="btnFall" class="toggle" style="border-color: rgba(255,119,85,0.5); color:#ff7755;">Fall in</button></div>
     <div class="row"><label>Tidal disruption</label><button id="btnStar" class="toggle" style="border-color: rgba(124,207,255,0.5); color:#7ccfff;">Disrupt a star</button></div>
     <div class="row"><label>Star quality</label><button id="btnStarQ" class="toggle on">High</button></div>
@@ -788,7 +788,7 @@ const ui = {
   focusDisk: document.getElementById('focusDisk'),
   focusWide: document.getElementById('focusWide'),
 };
-const state = { showLabels: true, showInfalling: true, showWell: true, showMag: true,
+const state = { showLabels: true, showInfalling: true, showWell: true, showMag: false,
   falling: false, fallT: 0, fallStartPos: new THREE.Vector3(), fallStartDist: 0, fallPhase: '', fallEndAt: 0 };
 
 ui.rotate.onclick = () => { controls.autoRotate = !controls.autoRotate; ui.rotate.classList.toggle('on'); ui.rotate.textContent = controls.autoRotate ? 'On' : 'Off'; };
