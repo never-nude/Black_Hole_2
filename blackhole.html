@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Black Hole — Interactive Educational Model</title>
+<style>
+  :root {
+    --fg: #e8eef7;
+    --accent: #7cf;
+    --warm: #ffb169;
+    --hot: #ff7755;
+    --panel: rgba(10, 14, 28, 0.78);
+    --border: rgba(124, 207, 255, 0.25);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; }
+  canvas { display: block; }
+
+  #ui {
+    position: fixed; inset: 0; pointer-events: none; z-index: 10;
+  }
+  .panel {
+    position: absolute; pointer-events: auto;
+    background: var(--panel); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--border); border-radius: 14px;
+    padding: 14px 16px; font-size: 13px; line-height: 1.5;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.55);
+  }
+  #title { top: 18px; left: 18px; max-width: 340px; }
+  #title h1 { margin: 0 0 4px; font-size: 16px; font-weight: 600; letter-spacing: 0.3px; color: var(--hot); }
+  #title p { margin: 0; opacity: 0.78; font-size: 12px; }
+
+  #controls { top: 18px; right: 18px; min-width: 260px; max-height: calc(100vh - 36px); overflow-y: auto; }
+  #controls h2 { margin: 0 0 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; opacity: 0.65; }
+  #controls h2:not(:first-child) { margin-top: 14px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; }
+  .row label { font-size: 12px; }
+  .row input[type=range] { flex: 1; min-width: 0; }
+  button.toggle, button.action {
+    background: transparent; color: var(--fg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 5px 9px; font-size: 11.5px; cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  button.toggle.on { background: rgba(124, 207, 255, 0.18); border-color: var(--accent); color: var(--accent); }
+  button.toggle:hover, button.action:hover { border-color: var(--accent); }
+  button.warm.on { background: rgba(255, 177, 105, 0.18); border-color: var(--warm); color: var(--warm); }
+
+  #info { bottom: 18px; left: 18px; max-width: 420px; }
+  #info h3 { margin: 0 0 6px; font-size: 13px; color: var(--warm); }
+  #info p { margin: 0 0 8px; font-size: 12.5px; opacity: 0.88; }
+  #info b { color: var(--accent); }
+  #info .tabs { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+  #info .tab { font-size: 11px; padding: 4px 9px; border-radius: 6px; background: rgba(255,255,255,0.05); cursor: pointer; opacity: 0.6; }
+  #info .tab.active { background: rgba(255, 177, 105, 0.18); color: var(--warm); opacity: 1; }
+  #info .tab:hover { opacity: 0.95; }
+
+  #legend { bottom: 18px; right: 18px; font-size: 11.5px; opacity: 0.82; max-width: 250px; }
+  #legend h2 { margin: 0 0 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; opacity: 0.65; }
+  #legend .key { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 11.5px; }
+  .swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+
+  .label3d {
+    position: absolute; pointer-events: auto;
+    background: rgba(10, 14, 28, 0.88); border: 1px solid var(--border);
+    color: var(--accent); font-size: 10.5px; padding: 3px 7px; border-radius: 6px;
+    white-space: nowrap; transform: translate(-50%, -50%);
+    transition: opacity 0.2s, transform 0.1s;
+    cursor: pointer; user-select: none;
+    font-weight: 500;
+  }
+  .label3d:hover { transform: translate(-50%, -50%) scale(1.08); }
+  .label3d.warm { color: var(--warm); border-color: rgba(255, 177, 105, 0.4); }
+  .label3d.hot  { color: var(--hot);  border-color: rgba(255, 119, 85, 0.4); }
+  .label3d::before {
+    content: ''; position: absolute; left: -8px; top: 50%; width: 6px; height: 6px;
+    background: currentColor; border-radius: 50%;
+    transform: translate(-50%, -50%); opacity: 0.85;
+  }
+
+  #popover {
+    position: fixed; pointer-events: auto; max-width: 360px;
+    background: rgba(10, 14, 28, 0.94); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; font-size: 13px; line-height: 1.55;
+    box-shadow: 0 12px 50px rgba(0,0,0,0.6);
+    z-index: 100; display: none;
+  }
+  #popover h4 { margin: 0 0 6px; font-size: 13.5px; color: var(--accent); }
+  #popover.warm h4 { color: var(--warm); }
+  #popover.hot h4 { color: var(--hot); }
+  #popover p { margin: 0; font-size: 12.5px; opacity: 0.92; }
+  #popover .close { position: absolute; top: 8px; right: 10px; cursor: pointer; opacity: 0.55; font-size: 16px; line-height: 1; }
+  #popover .close:hover { opacity: 1; }
+
+  #hint { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); pointer-events: none;
+    font-size: 11px; opacity: 0.55; letter-spacing: 0.4px; text-align: center; }
+
+  #hoverTip {
+    position: fixed; pointer-events: none; z-index: 50;
+    background: rgba(10, 14, 28, 0.92); border: 1px solid var(--border);
+    color: var(--accent); font-size: 11.5px; padding: 5px 9px; border-radius: 6px;
+    transform: translate(12px, 12px);
+    display: none; white-space: nowrap;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.5);
+    font-weight: 500;
+  }
+  #hoverTip.warm { color: var(--warm); border-color: rgba(255, 177, 105, 0.4); }
+  #hoverTip.hot  { color: var(--hot);  border-color: rgba(255, 119, 85, 0.4); }
+  #hoverTip .sub { font-size: 10.5px; opacity: 0.65; font-weight: 400; margin-top: 1px; }
+
+  /* Floating controls toggle — only shown on small/touch screens */
+  #mobToggle { display: none; }
+
+  /* ============ Mobile / small-screen layout ============ */
+  @media (max-width: 760px) {
+    #title { top: 8px; left: 8px; right: 8px; max-width: none; padding: 10px 13px; border-radius: 12px; }
+    #title h1 { font-size: 15px; }
+    #title p { font-size: 11px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+    /* Hide the secondary read-only panels to keep the canvas clear */
+    #legend, #hint, #hoverTip { display: none !important; }
+
+    /* Learning text becomes a collapsible bottom card, off by default */
+    #info { left: 8px; right: 8px; bottom: 8px; max-width: none; max-height: 42vh; overflow-y: auto;
+            transform: translateY(115%); transition: transform .28s ease; }
+    body.info-open #info { transform: translateY(0); }
+
+    /* Controls become a slide-up bottom sheet */
+    #controls {
+      top: auto; bottom: 0; left: 0; right: 0; width: 100%;
+      min-width: 0; max-width: none; max-height: 66vh;
+      border-radius: 16px 16px 0 0; border-bottom: none;
+      padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
+      transform: translateY(112%); transition: transform .28s ease;
+    }
+    body.panel-open #controls { transform: translateY(0); }
+
+    /* Bigger touch targets */
+    .row { padding: 7px 0; }
+    button.toggle, button.action { padding: 8px 12px; font-size: 13px; }
+    .row input[type=range] { height: 28px; }
+    #controls h2 { font-size: 12px; }
+
+    /* Floating round toggle buttons */
+    #mobToggle, #mobInfo {
+      display: flex; align-items: center; justify-content: center;
+      position: fixed; z-index: 120; width: 52px; height: 52px; border-radius: 50%;
+      bottom: calc(16px + env(safe-area-inset-bottom));
+      background: var(--panel); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--accent); color: var(--accent);
+      font-size: 22px; pointer-events: auto; cursor: pointer;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+    }
+    #mobToggle { right: 14px; }
+    #mobInfo { left: 14px; font-size: 18px; border-color: var(--warm); color: var(--warm); }
+    body.panel-open #mobToggle { background: rgba(124,207,255,0.22); }
+    body.info-open  #mobInfo  { background: rgba(255,177,105,0.22); }
+
+    #popover { max-width: calc(100vw - 24px); left: 12px !important; right: 12px; }
+  }
+</style>
+</head>
+<body>
+<button id="mobToggle" aria-label="Toggle controls">⚙</button>
+<button id="mobInfo" aria-label="Toggle info">ℹ</button>
+<div id="ui">
+  <div id="title" class="panel">
+    <h1>Black Hole</h1>
+    <p>One of general relativity's strangest predictions, rendered in real time. Click any label to learn what it is. Drag to orbit, scroll to zoom, WASD to fly — or hit <b>Fall in</b> to plunge past the horizon.</p>
+  </div>
+
+  <div id="controls" class="panel">
+    <h2>Black hole</h2>
+    <div class="row"><label>Mass (Rs)</label><input id="bhMass" type="range" min="0.8" max="3.5" step="0.05" value="1.8"></div>
+    <div class="row"><label>Disk tilt</label><input id="bhTilt" type="range" min="0" max="1.2" step="0.02" value="0.45"></div>
+    <div class="row"><label>Spin rate</label><input id="bhSpin" type="range" min="0" max="3" step="0.05" value="1.2"></div>
+
+    <h2>View</h2>
+    <div class="row"><label>Auto-rotate</label><button id="btnRotate" class="toggle on">On</button></div>
+    <div class="row"><label>Labels</label><button id="btnLabels" class="toggle on">On</button></div>
+    <div class="row"><label>Infalling gas</label><button id="btnInfall" class="toggle on">On</button></div>
+    <div class="row"><label>Gravity well</label><button id="btnWell" class="toggle" style="border-color: rgba(124,207,255,0.5); color:#7ccfff;">Off</button></div>
+    <div class="row"><label>Magnetic field</label><button id="btnMag" class="toggle" style="border-color: rgba(199,123,255,0.5); color:#c77bff;">Off</button></div>
+    <div class="row"><label>Fall into BH</label><button id="btnFall" class="toggle" style="border-color: rgba(255,119,85,0.5); color:#ff7755;">Fall in</button></div>
+    <div class="row"><label>Tidal disruption</label><button id="btnStar" class="toggle" style="border-color: rgba(124,207,255,0.5); color:#7ccfff;">Disrupt a star</button></div>
+    <div class="row"><label>Star quality</label><button id="btnStarQ" class="toggle on">High</button></div>
+
+    <h2>Camera</h2>
+    <div class="row"><label>Focus</label>
+      <span style="display:flex;gap:5px;">
+        <button id="focusClose" class="action">Close</button>
+        <button id="focusDisk" class="action">Disk</button>
+        <button id="focusWide" class="action">Wide</button>
+      </span>
+    </div>
+  </div>
+
+  <div id="info" class="panel">
+    <div class="tabs">
+      <div class="tab active" data-tab="overview">Overview</div>
+      <div class="tab" data-tab="anatomy">Anatomy</div>
+      <div class="tab" data-tab="fall">Falling in</div>
+      <div class="tab" data-tab="reality">Reality check</div>
+    </div>
+    <div id="tabContent"></div>
+  </div>
+
+  <div id="legend" class="panel">
+    <h2>Legend</h2>
+    <div class="key"><div class="swatch" style="background:#000;border:1px solid #ff7755"></div>Event horizon (point of no return)</div>
+    <div class="key"><div class="swatch" style="background:#ffcc44"></div>Photon sphere (1.5 × Rs)</div>
+    <div class="key"><div class="swatch" style="background:#ff7755"></div>ISCO — innermost stable orbit</div>
+    <div class="key"><div class="swatch" style="background:linear-gradient(90deg,#ffeecc,#ff5522)"></div>Accretion disk</div>
+    <div class="key"><div class="swatch" style="background:#ffcc88"></div>Infalling gas</div>
+    <div class="key"><div class="swatch" style="background:linear-gradient(90deg,#cfe6ff,#ff3322)"></div>Stellar debris stream</div>
+  </div>
+
+  <div id="hint">left-drag orbit · right-drag pan · scroll zoom · WASD + QE fly · Shift boost · R reset</div>
+</div>
+
+<div id="popover">
+  <span class="close">×</span>
+  <h4></h4>
+  <p></p>
+</div>
+
+<div id="hoverTip"></div>
+
+<div id="fallNarration" class="panel" style="display:none; bottom: 80px; left: 50%; transform: translateX(-50%); max-width: 520px; text-align: left; border-color: rgba(255,119,85,0.5);">
+  <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
+    <h3 id="fallTitle" style="margin:0; color:#ff7755; font-size:14px;"></h3>
+    <span id="fallDist" style="font-size:11px; opacity:0.6; font-family:ui-monospace,monospace;"></span>
+  </div>
+  <p id="fallBody" style="margin:0; font-size:12.5px; opacity:0.9; line-height:1.5;"></p>
+</div>
+
+<div id="tdeNarration" class="panel" style="display:none; bottom: 80px; left: 50%; transform: translateX(-50%); max-width: 540px; text-align: left; border-color: rgba(124,207,255,0.5);">
+  <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
+    <h3 id="tdeTitle" style="margin:0; color:#7ccfff; font-size:14px;"></h3>
+    <span id="tdeTag" style="font-size:11px; opacity:0.55; font-family:ui-monospace,monospace;">tidal disruption event</span>
+  </div>
+  <p id="tdeBody" style="margin:0; font-size:12.5px; opacity:0.9; line-height:1.5;"></p>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+// ====================== Scene setup ======================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000007);
+scene.fog = new THREE.FogExp2(0x000007, 0.006);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.05, 600);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 760 ? 1.5 : 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.minDistance = 0.05;
+controls.maxDistance = 200;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.35;
+controls.enablePan = true;
+controls.screenSpacePanning = true;
+controls.keys = { LEFT: '', UP: '', RIGHT: '', BOTTOM: '' }; // we handle our own keys
+
+// ====================== Post-processing (gravitational lensing) ======================
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const lensShader = {
+  uniforms: {
+    tDiffuse:     { value: null },
+    bhScreenPos:  { value: new THREE.Vector2(0.5, 0.5) },
+    aspect:       { value: window.innerWidth / window.innerHeight },
+    lensStrength: { value: 0 },
+    blueshift:    { value: 0 },
+    vignette:     { value: 0 },
+    blackout:     { value: 0 },
+    bhVisible:    { value: 0 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec2 bhScreenPos;
+    uniform float aspect;
+    uniform float lensStrength;
+    uniform float blueshift;
+    uniform float vignette;
+    uniform float blackout;
+    uniform float bhVisible;
+    varying vec2 vUv;
+    void main(){
+      vec2 uv = vUv;
+      vec2 d = uv - bhScreenPos;
+      d.x *= aspect;
+      float dist = length(d);
+      vec2 dirAway = normalize(d + vec2(1e-6));
+      // gravitational lensing: pull rays inward toward BH
+      float bend = lensStrength * 0.04 / (dist * dist + 0.012);
+      bend = min(bend, 0.35);
+      vec2 sampleUv = uv - dirAway * bend * bhVisible;
+      // chromatic aberration
+      float ca = lensStrength * 0.003 * bhVisible;
+      vec3 col;
+      col.r = texture2D(tDiffuse, sampleUv - dirAway * ca).r;
+      col.g = texture2D(tDiffuse, sampleUv).g;
+      col.b = texture2D(tDiffuse, sampleUv + dirAway * ca).b;
+      // blueshift: shift toward blue as we fall in
+      col = mix(col, col * vec3(0.55, 0.8, 1.5), blueshift);
+      // vignette tightening around the BH
+      float vig = (1.0 - smoothstep(0.0, 0.6, dist)) * vignette;
+      col *= 1.0 - vig * 0.85;
+      // blackout (crossing the horizon)
+      col = mix(col, vec3(0.0), blackout);
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+};
+const lensPass = new ShaderPass(lensShader);
+lensPass.renderToScreen = true;
+composer.addPass(lensPass);
+
+// ====================== Object positions ======================
+const BH_POS = new THREE.Vector3(0, 0, 0);
+
+// ====================== Lights ======================
+scene.add(new THREE.AmbientLight(0x223355, 0.6));
+const keyLight = new THREE.PointLight(0x88ccff, 2.0, 200);
+keyLight.position.set(10, 12, 14);
+scene.add(keyLight);
+const rimLight = new THREE.PointLight(0xff9966, 1.4, 200);
+rimLight.position.set(-12, -6, -8);
+scene.add(rimLight);
+// Black hole accretion glow
+const bhLight = new THREE.PointLight(0xffaa55, 1.8, 60);
+bhLight.position.copy(BH_POS);
+scene.add(bhLight);
+
+// ====================== Starfield ======================
+function makeStars(count, radius, color, center) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  const c = new THREE.Color(color);
+  for (let i = 0; i < count; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const r = radius * (0.5 + 0.5 * Math.random());
+    pos[i*3]   = center.x + r * Math.sin(phi) * Math.cos(theta);
+    pos[i*3+1] = center.y + r * Math.sin(phi) * Math.sin(theta);
+    pos[i*3+2] = center.z + r * Math.cos(phi);
+    const tint = 0.6 + Math.random() * 0.4;
+    col[i*3] = c.r * tint; col[i*3+1] = c.g * tint; col[i*3+2] = c.b * tint;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mat = new THREE.PointsMaterial({ size: 0.08, vertexColors: true, transparent: true, opacity: 0.95, sizeAttenuation: true });
+  return new THREE.Points(geo, mat);
+}
+scene.add(makeStars(3200, 80, 0xaaccff, BH_POS));
+scene.add(makeStars(900, 30, 0x99ddff, BH_POS));
+
+// Distant nebula
+const nebulaGeo = new THREE.SphereGeometry(150, 32, 32);
+const nebulaMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }`,
+  fragmentShader: `
+    varying vec3 vP;
+    void main() {
+      vec3 n = normalize(vP);
+      float a = pow(max(0.0, n.y), 1.5) * 0.16;
+      float b = pow(max(0.0, -n.y), 1.5) * 0.12;
+      float c = pow(max(0.0, n.x), 1.5) * 0.10;
+      vec3 col = vec3(0.15,0.2,0.4)*a + vec3(0.35,0.15,0.25)*b + vec3(0.45,0.25,0.1)*c;
+      gl_FragColor = vec4(col, 1.0);
+    }`
+});
+scene.add(new THREE.Mesh(nebulaGeo, nebulaMat));
+
+// ====================== Black hole ======================
+let bhParams = { mass: 1.8, tilt: 0.45, spin: 1.2 };
+const blackholeGroup = new THREE.Group();
+blackholeGroup.position.copy(BH_POS);
+scene.add(blackholeGroup);
+
+let eventHorizon, photonSphere, accretionDisk, iscoRing, spinAxis, infallingGroup;
+let gravityWell, magField;
+const diskTilt = new THREE.Group();
+blackholeGroup.add(diskTilt);
+
+function buildBlackHole() {
+  while (blackholeGroup.children.length) {
+    const c = blackholeGroup.children.pop();
+    if (c.geometry) c.geometry.dispose?.();
+    if (c.material) c.material.dispose?.();
+  }
+  blackholeGroup.add(diskTilt);
+  while (diskTilt.children.length) {
+    const c = diskTilt.children.pop();
+    if (c.geometry) c.geometry.dispose?.();
+    if (c.material) c.material.dispose?.();
+  }
+
+  const Rs = bhParams.mass;
+
+  // Event horizon — pure black sphere with a thin warm rim (gravitational lensing glow)
+  const ehMat = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 } },
+    vertexShader: `varying vec3 vN; varying vec3 vW;
+      void main(){ vN = normalize(normalMatrix*normal);
+        vec4 wp=modelMatrix*vec4(position,1.0); vW=wp.xyz;
+        gl_Position=projectionMatrix*viewMatrix*wp; }`,
+    fragmentShader: `
+      varying vec3 vN; varying vec3 vW; uniform float time;
+      void main(){
+        vec3 viewDir = normalize(cameraPosition - vW);
+        float fres = pow(1.0 - max(0.0, dot(viewDir, vN)), 6.0);
+        vec3 rim = mix(vec3(1.0,0.55,0.2), vec3(1.0,0.85,0.5), fres);
+        gl_FragColor = vec4(rim * fres * 1.2, 1.0);
+      }`
+  });
+  eventHorizon = new THREE.Mesh(new THREE.SphereGeometry(Rs, 64, 64), ehMat);
+  eventHorizon.userData.labelId = 'eh';
+  blackholeGroup.add(eventHorizon);
+
+  // Hidden inner sphere to act as singularity hover target
+  const singProxy = new THREE.Mesh(new THREE.SphereGeometry(Rs * 0.4, 16, 16), new THREE.MeshBasicMaterial({ visible: false }));
+  singProxy.userData.labelId = 'singularity';
+  blackholeGroup.add(singProxy);
+
+  // Photon sphere — thin ring at 1.5 Rs
+  const psGeo = new THREE.TorusGeometry(Rs * 1.5, 0.03, 16, 128);
+  photonSphere = new THREE.Mesh(psGeo, new THREE.MeshBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.85 }));
+  photonSphere.rotation.x = Math.PI / 2;
+  blackholeGroup.add(photonSphere);
+  // Hover proxy for photon sphere
+  const psProxy = new THREE.Mesh(new THREE.TorusGeometry(Rs * 1.5, 0.25, 8, 48), new THREE.MeshBasicMaterial({ visible: false }));
+  psProxy.rotation.x = Math.PI / 2;
+  psProxy.userData.labelId = 'photon';
+  blackholeGroup.add(psProxy);
+
+  // Tilt the disk system slightly so we see it
+  diskTilt.rotation.x = bhParams.tilt;
+  diskTilt.rotation.y = 0.2;
+
+  // ISCO marker at 3 Rs
+  const iscoGeo = new THREE.TorusGeometry(Rs * 3.0, 0.025, 12, 128);
+  iscoRing = new THREE.Mesh(iscoGeo, new THREE.MeshBasicMaterial({ color: 0xff7755, transparent: true, opacity: 0.55 }));
+  iscoRing.rotation.x = Math.PI / 2;
+  diskTilt.add(iscoRing);
+  // Hover proxy for ISCO
+  const iscoProxy = new THREE.Mesh(new THREE.TorusGeometry(Rs * 3.0, 0.3, 8, 48), new THREE.MeshBasicMaterial({ visible: false }));
+  iscoProxy.rotation.x = Math.PI / 2;
+  iscoProxy.userData.labelId = 'isco';
+  diskTilt.add(iscoProxy);
+
+  // Accretion disk — annulus from 3 Rs to 8 Rs
+  const innerR = Rs * 3.0;
+  const outerR = Rs * 8.0;
+  const ringGeo = new THREE.RingGeometry(innerR, outerR, 256, 1);
+  const diskMat = new THREE.ShaderMaterial({
+    transparent: true, side: THREE.DoubleSide, depthWrite: false,
+    uniforms: { time: { value: 0 }, innerR: { value: innerR }, outerR: { value: outerR } },
+    vertexShader: `
+      varying vec2 vLocal;
+      void main(){ vLocal = position.xy;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    fragmentShader: `
+      varying vec2 vLocal;
+      uniform float time; uniform float innerR; uniform float outerR;
+      void main(){
+        float r = length(vLocal);
+        float theta = atan(vLocal.y, vLocal.x);
+        float t = clamp((r - innerR) / (outerR - innerR), 0.0, 1.0);
+        // turbulent bands
+        float swirl = sin(theta * 6.0 + time * 2.0 - r * 5.0) * 0.5 + 0.5;
+        float fine  = sin(theta * 24.0 - time * 5.0 + r * 12.0) * 0.5 + 0.5;
+        float band  = mix(swirl, fine, 0.4);
+        // temperature gradient: hot near, cool far
+        vec3 hot  = vec3(1.0, 0.97, 0.85);
+        vec3 mid  = vec3(1.0, 0.55, 0.18);
+        vec3 cool = vec3(0.45, 0.08, 0.04);
+        vec3 col = mix(hot, mid, smoothstep(0.0, 0.4, t));
+        col = mix(col, cool, smoothstep(0.4, 1.0, t));
+        // Doppler boost — brighter on the approaching side
+        float doppler = 1.0 + 0.6 * cos(theta);
+        float bright = (0.4 + band * 0.9) * doppler;
+        // fade at inner and outer edges
+        float fade = smoothstep(0.0, 0.08, t) * smoothstep(1.0, 0.85, t);
+        vec3 final = col * bright * fade;
+        gl_FragColor = vec4(final, fade * (0.6 + bright * 0.5));
+      }`
+  });
+  accretionDisk = new THREE.Mesh(ringGeo, diskMat);
+  accretionDisk.userData.labelId = 'disk';
+  accretionDisk.rotation.x = Math.PI / 2;
+  diskTilt.add(accretionDisk);
+
+  // Spin axis line + invisible cylinder for hover
+  const axisGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, -Rs * 4.5, 0), new THREE.Vector3(0, Rs * 4.5, 0)
+  ]);
+  spinAxis = new THREE.Line(axisGeo, new THREE.LineBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.35 }));
+  diskTilt.add(spinAxis);
+  const axisProxy = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, Rs * 9, 12, 1, true), new THREE.MeshBasicMaterial({ visible: false }));
+  axisProxy.userData.labelId = 'spin';
+  diskTilt.add(axisProxy);
+
+  // Infalling particles
+  infallingGroup = new THREE.Group();
+  const infMat = new THREE.PointsMaterial({ color: 0xffcc88, size: 0.12, transparent: true, opacity: 0.9, sizeAttenuation: true });
+  const pGeo = new THREE.BufferGeometry();
+  const N = 240;
+  const pPos = new Float32Array(N * 3);
+  pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+  const points = new THREE.Points(pGeo, infMat);
+  infallingGroup.add(points);
+  diskTilt.add(infallingGroup);
+  infallingGroup.visible = state.showInfalling;
+  infallingGroup.userData = { positions: pPos, count: N, geom: pGeo,
+    states: Array.from({length: N}, () => ({
+      r: 3 + Math.random() * 5,
+      theta: Math.random() * Math.PI * 2,
+      speed: 0.5 + Math.random() * 1.5,
+      decay: 0.992 + Math.random() * 0.005,
+    }))
+  };
+
+  buildGravityWell(Rs);
+  buildMagField(Rs);
+}
+
+// ====================== Gravity well (Flamm paraboloid funnel + inspiral tracers) ======================
+// Embedding height z(r)=2*sqrt(Rs*(r-Rs)); oriented downward so the throat is deep and the rim is flat.
+// In diskTilt-local space the equatorial plane is XZ (y up), matching the disk and infalling gas.
+function funnelY(r, Rs){ const z = 2*Math.sqrt(Math.max(Rs*(r-Rs),0)); return z; }   // raw embedding height
+function buildGravityWell(Rs){
+  gravityWell = new THREE.Group();
+  const rIn = Rs*1.12, rOut = Rs*13.0;
+  const zmax = funnelY(rOut, Rs);
+  const depthK = 0.72;                       // visual depth scale
+  const yOf = (r)=> (funnelY(r,Rs) - zmax) * depthK;   // throat deep (negative), rim ~0
+  const colThroat = new THREE.Color(0xfff0d8), colRim = new THREE.Color(0x2f73b8);
+
+  // ---- wireframe: concentric rings + radial spokes, vertex-colored by depth ----
+  const segs = 96, rings = 11, spokes = 24;
+  const verts = [], cols = [];
+  const radiusAt = (i)=> { const f=i/(rings-1); return rIn + (rOut-rIn)*(f*f); }; // denser near throat
+  const pushCol = (r)=>{ const d=THREE.MathUtils.clamp((zmax-funnelY(r,Rs))/zmax,0,1); const c=colRim.clone().lerp(colThroat,d); cols.push(c.r,c.g,c.b); };
+  // rings
+  for(let i=0;i<rings;i++){ const r=radiusAt(i), y=yOf(r);
+    for(let s=0;s<segs;s++){ const a0=s/segs*Math.PI*2, a1=(s+1)/segs*Math.PI*2;
+      verts.push(r*Math.cos(a0),y,r*Math.sin(a0)); pushCol(r);
+      verts.push(r*Math.cos(a1),y,r*Math.sin(a1)); pushCol(r); } }
+  // spokes
+  for(let s=0;s<spokes;s++){ const a=s/spokes*Math.PI*2, ca=Math.cos(a), sa=Math.sin(a);
+    const steps=40;
+    for(let i=0;i<steps;i++){ const r0=rIn+(rOut-rIn)*(i/steps), r1=rIn+(rOut-rIn)*((i+1)/steps);
+      verts.push(r0*ca,yOf(r0),r0*sa); pushCol(r0);
+      verts.push(r1*ca,yOf(r1),r1*sa); pushCol(r1); } }
+  const wg = new THREE.BufferGeometry();
+  wg.setAttribute('position', new THREE.Float32BufferAttribute(verts,3));
+  wg.setAttribute('color', new THREE.Float32BufferAttribute(cols,3));
+  const wmat = new THREE.LineBasicMaterial({ vertexColors:true, transparent:true, opacity:0.34, blending:THREE.AdditiveBlending, depthWrite:false });
+  gravityWell.add(new THREE.LineSegments(wg, wmat));
+
+  // ---- inspiral tracer bodies with trails ----
+  const NT = 6, TRAIL = 70, GM = 26*Rs;
+  const tracers = [];
+  const beadGeo = new THREE.BufferGeometry();
+  const beadPos = new Float32Array(NT*3);
+  beadGeo.setAttribute('position', new THREE.BufferAttribute(beadPos,3));
+  const beads = new THREE.Points(beadGeo, new THREE.PointsMaterial({ color:0xffd27c, size:Rs*0.34, transparent:true, opacity:0.95, blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true }));
+  gravityWell.add(beads);
+  const spawn = (s)=>{ const r=Rs*(9+Math.random()*4), a=Math.random()*Math.PI*2;
+    const vc=Math.sqrt(GM/r)*(0.82+Math.random()*0.16);     // sub-circular -> elliptical infall
+    s.x=r*Math.cos(a); s.z=r*Math.sin(a); s.vx=-Math.sin(a)*vc; s.vz=Math.cos(a)*vc; s.trail=[]; };
+  for(let i=0;i<NT;i++){ const s={}; spawn(s); tracers.push(s);
+    const tg=new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(TRAIL*3),3));
+    const tl=new THREE.Line(tg, new THREE.LineBasicMaterial({ color:0xffb860, transparent:true, opacity:0.5, blending:THREE.AdditiveBlending, depthWrite:false }));
+    gravityWell.add(tl); s.line=tl; s.tg=tg; }
+  gravityWell.userData = { tracers, beadGeo, beadPos, GM, Rs, yOf, TRAIL, spawn, rIn };
+  gravityWell.visible = state.showWell;
+  diskTilt.add(gravityWell);
+}
+
+// ====================== Magnetic field (dipole poloidal loops + twin jets) ======================
+function buildMagField(Rs){
+  magField = new THREE.Group();
+  // ---- dipole loops: r = r_eq * sin^2(theta), axis = local Y (spin axis) ----
+  const reqs = [2.4,3.6,5.2,7.2,9.6].map(v=>v*Rs);
+  const naz = 6;
+  const loopMat = new THREE.LineBasicMaterial({ color:0xc77bff, transparent:true, opacity:0.42, blending:THREE.AdditiveBlending, depthWrite:false });
+  const beadPaths = [];                       // store sampled loop polylines for flowing plasma beads
+  for(const req of reqs){
+    for(let k=0;k<naz;k++){
+      const phi = k/naz*Math.PI*2 + (req*0.7);   // stagger azimuths per shell
+      const pts=[]; const path=[];
+      const NTH=120;
+      for(let i=0;i<=NTH;i++){ const th=Math.PI*i/NTH; const r=req*Math.sin(th)*Math.sin(th);
+        if(r<Rs*1.02) continue;
+        const rho=r*Math.sin(th), h=r*Math.cos(th);
+        const p=new THREE.Vector3(rho*Math.cos(phi), h, rho*Math.sin(phi));
+        pts.push(p); path.push(p); }
+      if(pts.length<2) continue;
+      const g=new THREE.BufferGeometry().setFromPoints(pts);
+      magField.add(new THREE.Line(g, loopMat));
+      beadPaths.push(path);
+    }
+  }
+  // flowing plasma beads riding the loops
+  const NB = beadPaths.length;
+  const mbGeo = new THREE.BufferGeometry(); const mbPos = new Float32Array(NB*3);
+  mbGeo.setAttribute('position', new THREE.BufferAttribute(mbPos,3));
+  const mbeads = new THREE.Points(mbGeo, new THREE.PointsMaterial({ color:0xe6b3ff, size:Rs*0.26, transparent:true, opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true }));
+  magField.add(mbeads);
+
+  // ---- twin relativistic jets along +/- spin axis ----
+  const jetLen = Rs*13, jetMat = (sign)=> new THREE.ShaderMaterial({
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide,
+    uniforms:{ time:{value:0}, uLen:{value:jetLen}, uSign:{value:sign} },
+    vertexShader:`varying float vH; varying vec2 vUv; void main(){ vUv=uv; vH=position.y;
+      gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader:`varying float vH; varying vec2 vUv; uniform float time, uLen, uSign;
+      float h(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453); }
+      float n(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);
+        return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y); }
+      void main(){ float frac=clamp(vH/uLen,0.0,1.0);
+        float flow=n(vec2(vUv.x*8.0, frac*10.0 - time*2.4*uSign));
+        flow+=0.5*n(vec2(vUv.x*16.0, frac*20.0 - time*4.0*uSign));
+        float core=smoothstep(0.0,1.0,1.0-frac);          // bright at base, fades to tip
+        float a=core*(0.25+0.55*flow);
+        vec3 col=mix(vec3(0.7,0.85,1.0), vec3(0.6,0.4,1.0), frac);
+        gl_FragColor=vec4(col*a*1.6, a*0.7); }`
+  });
+  for(const sign of [1,-1]){
+    const geo = new THREE.CylinderGeometry(Rs*1.3, Rs*0.18, jetLen, 24, 24, true); // wide tip, narrow base
+    const jet = new THREE.Mesh(geo, jetMat(sign));
+    jet.position.y = sign*jetLen*0.5;            // base at origin, extends outward
+    if(sign<0) jet.rotation.x = Math.PI;         // flip so narrow base stays at origin
+    magField.add(jet);
+  }
+  magField.userData = { beadPaths, mbGeo, mbPos, jets: magField.children.filter(c=>c.material&&c.material.uniforms&&c.material.uniforms.uLen) };
+  magField.visible = state.showMag;
+  diskTilt.add(magField);
+}
+
+function updateGravityWell(dt){
+  if(!gravityWell || !gravityWell.visible) return;
+  const u=gravityWell.userData, GM=u.GM, Rs=u.Rs, yOf=u.yOf;
+  const SUB=2, h=(dt*1.0)/SUB;
+  for(let ti=0; ti<u.tracers.length; ti++){
+    const s=u.tracers[ti];
+    for(let k=0;k<SUB;k++){
+      const r=Math.hypot(s.x,s.z);
+      if(r<Rs*1.25){ u.spawn(s); break; }
+      const a=-GM/(r*r*r);
+      s.vx += a*s.x*h; s.vz += a*s.z*h;
+      s.vx *= (1-0.020*h); s.vz *= (1-0.020*h);     // gentle drag -> inspiral
+      s.x += s.vx*h; s.z += s.vz*h;
+    }
+    const r=Math.hypot(s.x,s.z), y=yOf(Math.max(r,u.rIn));
+    u.beadPos[ti*3]=s.x; u.beadPos[ti*3+1]=y; u.beadPos[ti*3+2]=s.z;
+    s.trail.push(s.x,y,s.z);
+    if(s.trail.length>u.TRAIL*3) s.trail.splice(0, s.trail.length-u.TRAIL*3);
+    const arr=s.tg.attributes.position.array;
+    for(let i=0;i<u.TRAIL;i++){ const src=s.trail.length-(u.TRAIL-i)*3;
+      if(src>=0){ arr[i*3]=s.trail[src]; arr[i*3+1]=s.trail[src+1]; arr[i*3+2]=s.trail[src+2]; }
+      else { arr[i*3]=s.x; arr[i*3+1]=y; arr[i*3+2]=s.z; } }
+    s.tg.attributes.position.needsUpdate=true;
+  }
+  u.beadGeo.attributes.position.needsUpdate=true;
+}
+
+function updateMagField(t){
+  if(!magField || !magField.visible) return;
+  const u=magField.userData;
+  for(let i=0;i<u.beadPaths.length;i++){ const path=u.beadPaths[i]; if(path.length<2) continue;
+    const f=(((t*0.12 + i*0.137)%1.0)+1.0)%1.0*(path.length-1);
+    const i0=Math.floor(f), fr=f-i0, p0=path[i0], p1=path[Math.min(i0+1,path.length-1)];
+    u.mbPos[i*3]=p0.x+(p1.x-p0.x)*fr; u.mbPos[i*3+1]=p0.y+(p1.y-p0.y)*fr; u.mbPos[i*3+2]=p0.z+(p1.z-p0.z)*fr; }
+  u.mbGeo.attributes.position.needsUpdate=true;
+  for(const jet of u.jets) jet.material.uniforms.time.value=t;
+}
+
+// ====================== Labels (clickable, with explanations) ======================
+const popover = document.getElementById('popover');
+const popH4 = popover.querySelector('h4');
+const popP = popover.querySelector('p');
+popover.querySelector('.close').addEventListener('click', () => popover.style.display = 'none');
+document.addEventListener('click', (e) => {
+  if (!popover.contains(e.target) && !e.target.classList?.contains('label3d')) {
+    popover.style.display = 'none';
+  }
+});
+
+function showPopover(def, ev) {
+  popover.className = '';
+  if (def.tone) popover.classList.add(def.tone);
+  popH4.textContent = def.title;
+  popP.innerHTML = def.explain;
+  popover.style.display = 'block';
+  // position near the label click
+  const x = Math.min(ev.clientX + 14, window.innerWidth - 380);
+  const y = Math.min(ev.clientY + 14, window.innerHeight - 180);
+  popover.style.left = x + 'px';
+  popover.style.top = y + 'px';
+}
+
+const labelDefs = [
+  { id: 'eh', title: 'Event horizon', tone: 'hot',
+    pos: () => BH_POS.clone().add(new THREE.Vector3(bhParams.mass + 0.4, bhParams.mass * 0.6, 0)),
+    explain: 'The <b>event horizon</b> is the point of no return. Anything that crosses it — including light — can never escape. The radius is the <i>Schwarzschild radius</i> (Rs), proportional to the black hole\'s mass. There is no surface here; it\'s just a one-way membrane in spacetime.' },
+  { id: 'singularity', title: 'Singularity', tone: 'hot',
+    pos: () => BH_POS.clone().add(new THREE.Vector3(0, -bhParams.mass * 0.3, 0)),
+    explain: 'At the very center is the <b>singularity</b> — a point (or ring, for a spinning black hole) where general relativity predicts infinite density and curvature. Most physicists believe this means the theory breaks down here and a quantum theory of gravity is needed.' },
+  { id: 'disk', title: 'Accretion disk', tone: 'warm',
+    pos: () => BH_POS.clone().add(new THREE.Vector3(bhParams.mass * 6.5, 0.2, 1.5)),
+    explain: 'Gas and dust spiraling inward form an <b>accretion disk</b>. Friction heats it to millions of degrees, making it glow brilliantly across the X-ray and visible spectrum. This is how astronomers actually <i>see</i> black holes — by the light from the material they\'re eating.' },
+  { id: 'doppler', title: 'Doppler boost', tone: 'warm',
+    pos: () => BH_POS.clone().add(new THREE.Vector3(-bhParams.mass * 5.5, 0.2, -1.5)),
+    explain: 'One side of the disk moves toward us at relativistic speed, the other moves away. The approaching side appears <b>much brighter</b> (and bluer) — a relativistic effect called Doppler beaming. This is real: it\'s clearly visible in the Event Horizon Telescope\'s images.' },
+  { id: 'photon', title: 'Photon sphere',
+    pos: () => BH_POS.clone().add(new THREE.Vector3(0, bhParams.mass * 1.5 + 0.2, bhParams.mass * 1.5)),
+    explain: 'At <b>1.5 × Rs</b>, gravity is so strong that light can orbit the black hole in a circle. These orbits are unstable — a photon eventually spirals in or escapes. The bright ring around the black hole in the EHT images is light circling the photon sphere multiple times.' },
+  { id: 'isco', title: 'Innermost stable orbit', tone: 'hot',
+    pos: () => BH_POS.clone().add(new THREE.Vector3(bhParams.mass * 3.0 + 0.5, 0.3, -bhParams.mass * 1.2)),
+    explain: 'The <b>ISCO</b>, at 3 × Rs for a non-spinning black hole, is the closest stable orbit. Inside this radius, matter can\'t hold a circular orbit — it spirals into the event horizon. The inner edge of the accretion disk lives here.' },
+  { id: 'spin', title: 'Spin axis',
+    pos: () => BH_POS.clone().add(new THREE.Vector3(0, bhParams.mass * 4.0, 0)),
+    explain: 'Real black holes spin — they conserve the angular momentum of whatever formed them. A spinning (Kerr) black hole drags spacetime around with it, an effect called <b>frame dragging</b>. The disk and any nearby orbits are pulled along with the rotation.' },
+];
+
+const labelEls = {};
+labelDefs.forEach(def => {
+  const el = document.createElement('div');
+  el.className = 'label3d' + (def.tone ? ' ' + def.tone : '');
+  el.textContent = def.title;
+  el.addEventListener('click', (ev) => { ev.stopPropagation(); showPopover(def, ev); });
+  document.body.appendChild(el);
+  labelEls[def.id] = el;
+});
+
+function projectToScreen(world) {
+  const v = world.clone().project(camera);
+  return {
+    x: (v.x * 0.5 + 0.5) * window.innerWidth,
+    y: (-v.y * 0.5 + 0.5) * window.innerHeight,
+    visible: v.z > -1 && v.z < 1
+  };
+}
+
+// ====================== UI wiring ======================
+const ui = {
+  rotate: document.getElementById('btnRotate'),
+  labels: document.getElementById('btnLabels'),
+  infall: document.getElementById('btnInfall'),
+  well: document.getElementById('btnWell'),
+  mag: document.getElementById('btnMag'),
+  fall: document.getElementById('btnFall'),
+  star: document.getElementById('btnStar'),
+  starQ: document.getElementById('btnStarQ'),
+  bhMass: document.getElementById('bhMass'),
+  bhTilt: document.getElementById('bhTilt'),
+  bhSpin: document.getElementById('bhSpin'),
+  focusClose: document.getElementById('focusClose'),
+  focusDisk: document.getElementById('focusDisk'),
+  focusWide: document.getElementById('focusWide'),
+};
+const state = { showLabels: true, showInfalling: true, showWell: false, showMag: false,
+  falling: false, fallT: 0, fallStartPos: new THREE.Vector3(), fallStartDist: 0, fallPhase: '', fallEndAt: 0 };
+
+ui.rotate.onclick = () => { controls.autoRotate = !controls.autoRotate; ui.rotate.classList.toggle('on'); ui.rotate.textContent = controls.autoRotate ? 'On' : 'Off'; };
+ui.labels.onclick = () => { state.showLabels = !state.showLabels; ui.labels.classList.toggle('on'); ui.labels.textContent = state.showLabels ? 'On' : 'Off'; };
+ui.infall.onclick = () => { state.showInfalling = !state.showInfalling; ui.infall.classList.toggle('on'); ui.infall.textContent = state.showInfalling ? 'On' : 'Off'; if (infallingGroup) infallingGroup.visible = state.showInfalling; };
+ui.well.onclick = () => { state.showWell = !state.showWell; ui.well.classList.toggle('on'); ui.well.textContent = state.showWell ? 'On' : 'Off'; if (gravityWell) gravityWell.visible = state.showWell; };
+ui.mag.onclick = () => { state.showMag = !state.showMag; ui.mag.classList.toggle('on'); ui.mag.textContent = state.showMag ? 'On' : 'Off'; if (magField) magField.visible = state.showMag; };
+
+// Mobile bottom-sheet toggles
+const mobToggle = document.getElementById('mobToggle');
+const mobInfo = document.getElementById('mobInfo');
+if (mobToggle) mobToggle.onclick = () => { document.body.classList.toggle('panel-open'); document.body.classList.remove('info-open'); };
+if (mobInfo) mobInfo.onclick = () => { document.body.classList.toggle('info-open'); document.body.classList.remove('panel-open'); };
+
+// ====================== Black hole fall ======================
+const narrationEl = document.getElementById('fallNarration');
+const fallTitle = document.getElementById('fallTitle');
+const fallBody = document.getElementById('fallBody');
+const fallDist = document.getElementById('fallDist');
+
+const narrations = {
+  approach: {
+    title: 'Approaching the black hole',
+    body: 'Falling from rest. Notice how light from the disk and background stars begins to <b>bend</b> around the black hole — gravitational lensing. Stars don\'t appear where they really are.'
+  },
+  isco: {
+    title: 'Crossing the ISCO (3 × Rs)',
+    body: 'You\'ve crossed the <b>innermost stable circular orbit</b>. No orbit is stable inside this radius — every path now spirals inward. The disk\'s inner edge sits right here for a reason.'
+  },
+  photon: {
+    title: 'Photon sphere (1.5 × Rs)',
+    body: 'Light itself orbits the black hole at this radius. If you looked sideways, you\'d see the <b>back of your own head</b> — photons making a half-loop around the hole. The accretion disk visually wraps over the top and bottom from here.'
+  },
+  horizon: {
+    title: 'Approaching the event horizon',
+    body: 'From far away, observers watching you would see <b>time slow to a crawl</b>. Your image redshifts and dims, frozen near the horizon for eternity. From your own perspective, time passes normally — you keep falling.'
+  },
+  crossing: {
+    title: 'Crossing the event horizon',
+    body: 'You feel <b>nothing locally</b> — no wall, no jolt. But you can no longer send any signal outward. Every future-pointing direction in spacetime now leads to the singularity. There is no going back.'
+  },
+  inside: {
+    title: 'Inside the horizon',
+    body: '"Outward" no longer exists as a direction in spacetime — the singularity is in your <b>future</b>, not somewhere in space. Tidal forces grow exponentially as you fall, eventually stretching you out (<b>spaghettification</b>).'
+  },
+};
+
+function setNarration(key) {
+  const n = narrations[key];
+  if (!n) return;
+  fallTitle.textContent = n.title;
+  fallBody.innerHTML = n.body;
+}
+
+function startFall() {
+  state.falling = true;
+  state.fallT = 0;
+  state.fallPhase = '';
+  controls.enabled = false;
+  controls.autoRotate = false;
+  ui.rotate.classList.remove('on'); ui.rotate.textContent = 'Off';
+  popover.style.display = 'none';
+  // Consistent starting position: well outside, looking at BH
+  const Rs = bhParams.mass;
+  state.fallStartPos = BH_POS.clone().add(new THREE.Vector3(Rs * 14, Rs * 3, Rs * 6));
+  state.fallStartDist = state.fallStartPos.distanceTo(BH_POS);
+  camera.position.copy(state.fallStartPos);
+  controls.target.copy(BH_POS);
+  narrationEl.style.display = 'block';
+  ui.fall.textContent = 'Abort';
+  ui.fall.classList.add('on');
+  // Hide most labels during fall to focus the experience
+  state.showLabels = false;
+  ui.labels.classList.remove('on'); ui.labels.textContent = 'Off';
+}
+
+function stopFall() {
+  state.falling = false;
+  controls.enabled = true;
+  narrationEl.style.display = 'none';
+  ui.fall.textContent = 'Fall in';
+  ui.fall.classList.remove('on');
+  // reset lensing effects
+  lensPass.uniforms.blueshift.value = 0;
+  lensPass.uniforms.vignette.value = 0;
+  lensPass.uniforms.blackout.value = 0;
+}
+
+ui.fall.onclick = () => { state.falling ? stopFall() : startFall(); };
+
+function rebuildBlackHole() {
+  bhParams.mass = parseFloat(ui.bhMass.value);
+  bhParams.tilt = parseFloat(ui.bhTilt.value);
+  bhParams.spin = parseFloat(ui.bhSpin.value);
+  buildBlackHole();
+}
+[ui.bhMass, ui.bhTilt, ui.bhSpin].forEach(el => el.addEventListener('input', rebuildBlackHole));
+
+// Focus camera helpers
+function focusOn(target, distance, height, dir) {
+  controls.target.copy(target);
+  const d = (dir || new THREE.Vector3(1, 0.4, 1.2)).clone().normalize();
+  camera.position.copy(target).addScaledVector(d, distance).add(new THREE.Vector3(0, height, 0));
+  controls.update();
+}
+ui.focusClose.onclick = () => focusOn(BH_POS, bhParams.mass * 6, bhParams.mass * 1.8);
+ui.focusDisk.onclick  = () => focusOn(BH_POS, bhParams.mass * 9, bhParams.mass * 6, new THREE.Vector3(0.15, 1.0, 0.25));
+ui.focusWide.onclick  = () => focusOn(BH_POS, bhParams.mass * 15, bhParams.mass * 4);
+
+// ====================== Tidal disruption of a star ======================
+const TDE_N = 700;
+const tde = {
+  active:false, t:0, phase:'', flare:0, GM:0, _spread:99, _cdist:0,
+  P:new Float32Array(TDE_N*3), V:new Float32Array(TDE_N*3), colArr:new Float32Array(TDE_N*3),
+  alive:new Uint8Array(TDE_N), acc:new Uint8Array(TDE_N),
+  points:null, geom:null, core:null, glow:null, bhLightBase:bhLight.intensity,
+};
+const tdeNarrEl = document.getElementById('tdeNarration');
+const tdeTitle = document.getElementById('tdeTitle');
+const tdeBody  = document.getElementById('tdeBody');
+const TDE_NARR = {
+  approach:{ title:'A star wanders too close', body:'A Sun-like star drifts in on a near-parabolic orbit. It has crossed inside the <b>tidal radius</b> — the danger zone where the hole\'s gravity overwhelms the star\'s own.' },
+  stretch:{ title:'Spaghettification', body:'The hole pulls far harder on the near side of the star than the far side. That difference tears it apart and draws the gas into a long, thin <b>stream</b> — the same tidal stretching that would pull <i>you</i> out lengthwise.' },
+  flare:{ title:'Accretion flare', body:'Part of the debris plunges past the <b>event horizon</b>, releasing a brilliant flare as it\'s swallowed. This is how astronomers actually catch these <b>tidal disruption events</b> from across the universe.' },
+  tails:{ title:'Tidal tails', body:'The survivors are flung back out along two streams. Roughly half the debris stays bound and rains back over months to years; the rest escapes forever.' },
+};
+function setTdeNarr(p){ const n=TDE_NARR[p]; if(!n) return; tdeTitle.textContent=n.title; tdeBody.innerHTML=n.body; }
+
+function setupTDE(){
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(tde.P, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(tde.colArr, 3));
+  const mat = new THREE.PointsMaterial({ size:0.18, vertexColors:true, transparent:true, opacity:0.96, sizeAttenuation:true, blending:THREE.AdditiveBlending, depthWrite:false });
+  tde.points = new THREE.Points(geo, mat); tde.points.visible=false; tde.geom=geo; scene.add(tde.points);
+  // The intact star: a TRUE VOLUMETRIC raymarched star (raymarch pass on a sphere proxy,
+  // composited into the existing scene in one WebGL context). 3D-noise plasma/granulation,
+  // blackbody color (white-hot disk center -> orange granule limb), limb darkening, wispy corona.
+  tde.starGroup = new THREE.Group(); tde.starGroup.visible=false; scene.add(tde.starGroup);
+  tde.starMat = new THREE.ShaderMaterial({ transparent:true, depthWrite:false, premultipliedAlpha:true,
+    blending:THREE.NormalBlending, side:THREE.FrontSide,
+    uniforms:{ time:{value:0}, uOpacity:{value:1}, uCenter:{value:new THREE.Vector3()},
+               uRadius:{value:1}, uSpin:{value:0}, uSteps:{value:48.0} },
+    vertexShader:`varying vec3 vW;
+      void main(){ vec4 wp=modelMatrix*vec4(position,1.0); vW=wp.xyz; gl_Position=projectionMatrix*viewMatrix*wp; }`,
+    fragmentShader:`
+      varying vec3 vW;
+      uniform float time, uOpacity, uRadius, uSpin, uSteps; uniform vec3 uCenter;
+      float h(vec3 p){ return fract(sin(dot(p,vec3(12.9898,78.233,37.719)))*43758.5453); }
+      float vnoise(vec3 p){ vec3 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);
+        return mix(mix(mix(h(i),h(i+vec3(1,0,0)),f.x),mix(h(i+vec3(0,1,0)),h(i+vec3(1,1,0)),f.x),f.y),
+                   mix(mix(h(i+vec3(0,0,1)),h(i+vec3(1,0,1)),f.x),mix(h(i+vec3(0,1,1)),h(i+vec3(1,1,1)),f.x),f.y),f.z); }
+      float fbm5(vec3 p){ float s=0.0,a=0.5,fq=1.0; for(int i=0;i<5;i++){ s+=a*vnoise(p*fq); fq*=2.02; a*=0.5;} return s; }
+      float fbm4(vec3 p){ float s=0.0,a=0.5,fq=1.0; for(int i=0;i<4;i++){ s+=a*vnoise(p*fq); fq*=2.02; a*=0.5;} return s; }
+      float fbm3(vec3 p){ float s=0.0,a=0.5,fq=1.0; for(int i=0;i<3;i++){ s+=a*vnoise(p*fq); fq*=2.02; a*=0.5;} return s; }
+      vec3 heat(float x){ x=clamp(x,0.0,1.0);
+        vec3 c0=vec3(0.55,0.12,0.02), c1=vec3(1.00,0.42,0.10), c2=vec3(1.00,0.72,0.34),
+             c3=vec3(1.00,0.94,0.78), c4=vec3(1.00,1.00,0.98);
+        if(x<0.35) return mix(c0,c1,x/0.35);
+        else if(x<0.62) return mix(c1,c2,(x-0.35)/0.27);
+        else if(x<0.82) return mix(c2,c3,(x-0.62)/0.20);
+        return mix(c3,c4,(x-0.82)/0.18); }
+      vec3 rotY(vec3 p,float a){ float c=cos(a),s=sin(a); return vec3(c*p.x+s*p.z,p.y,-s*p.x+c*p.z); }
+      void main(){
+        vec3 ro=(cameraPosition-uCenter)/uRadius;   // star-radius units
+        vec3 rd=normalize(vW-cameraPosition);
+        float Rc=1.85;
+        float bb=dot(ro,rd), cc=dot(ro,ro)-Rc*Rc, disc=bb*bb-cc;
+        if(disc<0.0) discard;
+        float sq=sqrt(disc), t0=max(-bb-sq,0.0), t1=-bb+sq;
+        float steps=uSteps, seg=(t1-t0)/steps;
+        vec3 acc=vec3(0.0); float trans=1.0;
+        const int MAXST=72;
+        for(int i=0;i<MAXST;i++){
+          if(float(i)>=steps) break;
+          float t=t0+(float(i)+0.5)*seg;
+          vec3 ps=ro+rd*t; float rn=length(ps);
+          vec3 q=rotY(ps,-uSpin);
+          float warp=fbm3(q*2.2+vec3(0,0,time*0.05));
+          float gran=fbm5(q*5.5+vec3(warp*0.8)+vec3(time*0.04,0,0));
+          float surfR=1.0+0.055*(gran-0.5);
+          float body=clamp((surfR-rn)/0.045+0.5,0.0,1.0);
+          float sigB=body*17.0;
+          vec3 nrm=ps/max(rn,1e-4);
+          float mu=clamp(dot(-rd,nrm),0.0,1.0);
+          float ht=0.50+0.45*mu+0.30*(gran-0.5);
+          float limb=0.35+0.65*mu;
+          vec3 Eb=heat(ht)*(limb*(1.05+0.6*clamp(ht,0.0,1.0)));
+          float flow=fbm4(q*2.6+vec3(time*0.10,time*0.05,0.0));
+          float cw=fbm4(q*5.0+vec3(flow*1.6)+vec3(0.0,time*0.16,0.0));
+          float fil=clamp(cw-0.62,0.0,1.0)/0.38;
+          float cdens=fil*exp(-clamp(rn-1.0,0.0,5.0)/0.22);
+          float sigC=cdens*2.6;
+          vec3 Ec=heat(0.42+0.22*cw)*2.2;
+          float dT=exp(-sigB*seg);
+          acc+=trans*(1.0-dT)*Eb; trans*=dT;
+          acc+=trans*sigC*seg*Ec;
+          if(trans<0.01) break;
+        }
+        float alpha=(1.0-trans)*uOpacity;
+        vec3 col=acc*uOpacity;            // premultiplied
+        col=col/(1.0+col*0.4);            // gentle tonemap, no blowout
+        if(alpha<0.003 && max(max(col.r,col.g),col.b)<0.003) discard;
+        gl_FragColor=vec4(col,alpha);
+      }`
+  });
+  // proxy sphere (local radius 1.9 > corona Rc=1.85) -> rasterized fragments cover the volume
+  tde.starCore = new THREE.Mesh(new THREE.SphereGeometry(1.9,32,32), tde.starMat); tde.starGroup.add(tde.starCore);
+  tde.coronaMats = []; // corona is now part of the volumetric raymarch
+  tde.starLight = new THREE.PointLight(0xffd9a0, 0.0, 40); tde.starGroup.add(tde.starLight);
+  tde.glow = new THREE.Mesh(new THREE.SphereGeometry(1,24,24),
+    new THREE.MeshBasicMaterial({ color:0xffd8a0, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false }));
+  tde.glow.position.copy(BH_POS); scene.add(tde.glow);
+}
+
+function startStar(){
+  if (state.falling) stopFall();
+  const Rs=bhParams.mass, GM=72*Rs, r0=12*Rs, q=1.14*Rs;
+  const P0 = new THREE.Vector3(0.86,0.18,0.45).normalize().multiplyScalar(r0);
+  const rhat = P0.clone().normalize();
+  const that = new THREE.Vector3().crossVectors(new THREE.Vector3().crossVectors(rhat,new THREE.Vector3(0.1,1,0.25)), rhat).normalize();
+  const v=Math.sqrt(2*GM/r0), L=Math.sqrt(2*GM*q), vt=L/r0, vr=-Math.sqrt(Math.max(v*v-vt*vt,0));
+  const V0 = rhat.clone().multiplyScalar(vr).add(that.clone().multiplyScalar(vt));
+  const rstar=0.5*Rs;
+  for(let i=0;i<TDE_N;i++){ const ix=i*3;
+    tde.P[ix]=P0.x+(Math.random()*2-1)*rstar; tde.P[ix+1]=P0.y+(Math.random()*2-1)*rstar; tde.P[ix+2]=P0.z+(Math.random()*2-1)*rstar;
+    tde.V[ix]=V0.x+(Math.random()*2-1)*0.025*v; tde.V[ix+1]=V0.y+(Math.random()*2-1)*0.025*v; tde.V[ix+2]=V0.z+(Math.random()*2-1)*0.025*v;
+    tde.colArr[ix]=0.8; tde.colArr[ix+1]=0.85; tde.colArr[ix+2]=1.0; tde.alive[i]=1; tde.acc[i]=0;
+  }
+  tde.active=true; tde.t=0; tde.phase='approach'; tde.flare=0; tde.GM=GM; tde._spread=rstar; tde._cdist=r0;
+  tde.geom.attributes.position.needsUpdate=true; tde.geom.attributes.color.needsUpdate=true;
+  tde.points.visible=true; tde.points.material.opacity=0.05;
+  tde.starGroup.visible=true; tde.starGroup.position.copy(P0); tde.starGroup.scale.setScalar(Rs*0.8);
+  tdeNarrEl.style.display='block'; setTdeNarr('approach');
+  ui.star.textContent='Reset'; ui.star.classList.add('on');
+  controls.autoRotate=false; ui.rotate.classList.remove('on'); ui.rotate.textContent='Off';
+  focusOn(BH_POS, Rs*16, Rs*5);
+}
+
+function stopStar(){
+  tde.active=false;
+  if(tde.points){ tde.points.visible=false; tde.points.material.opacity=0.96; }
+  if(tde.starGroup) tde.starGroup.visible=false;
+  if(tde.glow) tde.glow.material.opacity=0; bhLight.intensity=tde.bhLightBase;
+  tdeNarrEl.style.display='none'; ui.star.textContent='Disrupt a star'; ui.star.classList.remove('on');
+}
+
+function updateTDE(dt){
+  if(!tde.active) return;
+  const Rs=bhParams.mass, GM=tde.GM, SUB=2, step=(dt*1.35)/SUB;
+  for(let s=0;s<SUB;s++){
+    for(let i=0;i<TDE_N;i++){
+      if(!tde.alive[i]) continue;
+      const ix=i*3, iy=ix+1, iz=ix+2;
+      const px=tde.P[ix], py=tde.P[iy], pz=tde.P[iz];
+      const r=Math.hypot(px,py,pz);
+      if(r<Rs){ tde.alive[i]=0; tde.acc[i]=1; tde.flare=Math.min(tde.flare+0.18,6); continue; }
+      if(r>70*Rs){ tde.alive[i]=0; continue; }
+      const g=-GM/(r*r*r);
+      tde.V[ix]+=g*px*step; tde.V[iy]+=g*py*step; tde.V[iz]+=g*pz*step;
+      tde.P[ix]=px+tde.V[ix]*step; tde.P[iy]=py+tde.V[iy]*step; tde.P[iz]=pz+tde.V[iz]*step;
+    }
+  }
+  let n=0,cx=0,cy=0,cz=0;
+  for(let i=0;i<TDE_N;i++){
+    const ix=i*3, iy=ix+1, iz=ix+2;
+    if(!tde.alive[i]){ tde.colArr[ix]=tde.colArr[iy]=tde.colArr[iz]=0; continue; }
+    const px=tde.P[ix],py=tde.P[iy],pz=tde.P[iz];
+    const r=Math.hypot(px,py,pz), sp=Math.hypot(tde.V[ix],tde.V[iy],tde.V[iz]);
+    const near=THREE.MathUtils.clamp(1-(r-Rs)/(6*Rs),0,1);   // 0 far → 1 at horizon (redshift)
+    tde.colArr[ix]=Math.min(0.7+0.35*near+Math.min(sp*0.04,0.3),1.4);
+    tde.colArr[iy]=Math.max(0.82-0.6*near,0.05);
+    tde.colArr[iz]=Math.max(1.0-0.9*near,0.04);
+    n++; cx+=px; cy+=py; cz+=pz;
+  }
+  if(n>0){
+    cx/=n; cy/=n; cz/=n;
+    let s2=0;
+    for(let i=0;i<TDE_N;i++){ if(!tde.alive[i])continue; const ix=i*3; const dx=tde.P[ix]-cx,dy=tde.P[ix+1]-cy,dz=tde.P[ix+2]-cz; s2+=dx*dx+dy*dy+dz*dz; }
+    const spread=Math.sqrt(s2/n);
+    const coreVis=THREE.MathUtils.clamp(1-(spread-Rs*0.7)/(Rs*1.8),0,1);
+    const sscale=Rs*0.8*(0.75+0.25*coreVis);
+    tde.starGroup.position.set(cx,cy,cz);
+    tde.starGroup.scale.setScalar(sscale);
+    tde.starMat.uniforms.uOpacity.value=coreVis;
+    tde.starMat.uniforms.uCenter.value.set(cx,cy,cz);
+    tde.starMat.uniforms.uRadius.value=sscale;
+    tde.starLight.intensity=coreVis*2.4;
+    tde.starGroup.visible=coreVis>0.02;
+    tde.points.material.opacity=THREE.MathUtils.clamp(1.05-coreVis,0.04,0.96);  // particles hidden while star is intact
+    tde._cdist=Math.hypot(cx,cy,cz); tde._spread=spread;
+  } else { tde.starGroup.visible=false; tde.points.material.opacity=0.96; tde._cdist=0; tde._spread=99; }
+  tde.starMat.uniforms.time.value=tde.t; tde.starMat.uniforms.uSpin.value=tde.t*0.25;
+  tde.flare*=Math.pow(0.10, dt);
+  bhLight.intensity=tde.bhLightBase+tde.flare*1.7;
+  tde.glow.material.opacity=THREE.MathUtils.clamp(tde.flare*0.5,0,0.92);
+  tde.glow.scale.setScalar(Rs*(2.0+tde.flare*1.3));
+  tde.geom.attributes.position.needsUpdate=true; tde.geom.attributes.color.needsUpdate=true;
+  tde.t+=dt;
+  let phase;
+  if(tde.flare>0.4) phase='flare';
+  else if(tde._spread>Rs*3.2) phase='tails';
+  else if(tde._spread>Rs*1.6) phase='stretch';
+  else phase='approach';
+  if(phase!==tde.phase){ tde.phase=phase; setTdeNarr(phase); }
+  if((n===0 && tde.flare<0.05) || tde.t>24) stopStar();
+}
+ui.star.onclick = () => { tde.active ? stopStar() : startStar(); };
+// Star quality: caps the volumetric raymarch step count (perf toggle).
+let starHigh = true;
+ui.starQ.onclick = () => {
+  starHigh = !starHigh;
+  tde.starMat.uniforms.uSteps.value = starHigh ? 48.0 : 24.0;
+  ui.starQ.textContent = starHigh ? 'High' : 'Low';
+  ui.starQ.classList.toggle('on', starHigh);
+};
+
+// ====================== Info tabs ======================
+const tabCopy = {
+  overview: `<h3>Anatomy of a black hole</h3>
+    <p>A <b>black hole</b> is a region where gravity is so strong that nothing — not even light — can escape once it crosses the <b>event horizon</b>. This one is rendered from the geometry of general relativity.</p>
+    <p>The glowing ring is the <b>accretion disk</b>: gas spiraling inward, heated by friction to millions of degrees. The side rotating toward you looks brighter — a relativistic <b>Doppler boost</b>.</p>
+    <p><b>Click any label</b> for a plain-English explanation. Use the sliders to change mass, tilt, and spin, the <b>Focus</b> buttons to reframe, or <b>Fall in</b> to plunge past the horizon.</p>`,
+  anatomy: `<h3>From the outside in</h3>
+    <p>The accretion disk's inner edge sits at the <b>innermost stable circular orbit</b> (ISCO, 3 × Rs for a non-spinning hole). Inside it, no orbit is stable — matter spirals in.</p>
+    <p>At <b>1.5 × Rs</b> is the <b>photon sphere</b>, where gravity bends light into orbits. The bright ring in the Event Horizon Telescope images is light circling here before it escapes to us.</p>
+    <p>The <b>event horizon</b> at the Schwarzschild radius (Rs ∝ mass) is the point of no return. At the center: the <b>singularity</b>, where the equations predict infinite curvature and known physics ends.</p>`,
+  fall: `<h3>Falling in</h3>
+    <p>Hit <b>Fall in</b> to drop toward the horizon from rest. Watch light from the disk and the background stars <b>bend</b> as you approach — gravitational lensing warps the entire sky.</p>
+    <p>Near the horizon, infalling light <b>blueshifts</b> and the view tunnels into a vignette. To a distant observer you'd appear to freeze and redden at the horizon forever; from your own seat, you cross it without feeling a thing.</p>
+    <p>Past the horizon the singularity is no longer a place in space — it's in your <b>future</b>. Tidal forces stretch you out lengthwise: <b>spaghettification</b>.</p>`,
+  reality: `<h3>What's real here</h3>
+    <p><b>Black holes are real.</b> They've been found via X-ray binaries, gravitational waves (LIGO/Virgo since 2015), and direct imaging (Event Horizon Telescope, 2019 &amp; 2022). The supermassive one at our galaxy's center is <b>Sagittarius A*</b>.</p>
+    <p>The famous ring images of <b>M87*</b> and <b>Sgr A*</b> show exactly the photon-sphere glow and Doppler-brightened disk modeled here.</p>
+    <p>The visuals are physically motivated but stylized — the lensing is a fast screen-space approximation, not a full geodesic ray-trace. Pushing that realism further is exactly where this build goes next.</p>`,
+};
+const tabContent = document.getElementById('tabContent');
+function setTab(name) {
+  document.querySelectorAll('#info .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  tabContent.innerHTML = tabCopy[name];
+}
+document.querySelectorAll('#info .tab').forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)));
+setTab('overview');
+
+// ====================== Keyboard movement ======================
+const keys = {};
+window.addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if (e.code === 'KeyR') { focusOn(BH_POS, bhParams.mass * 15, bhParams.mass * 4); }
+});
+window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+function applyKeyboard(dt) {
+  const boost = (keys['ShiftLeft'] || keys['ShiftRight']) ? 3.5 : 1.0;
+  const speed = 10.0 * boost;
+  const forward = new THREE.Vector3().subVectors(controls.target, camera.position).normalize();
+  const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
+  const upv = camera.up.clone().normalize();
+  const move = new THREE.Vector3();
+  if (keys['KeyW']) move.addScaledVector(forward, speed * dt);
+  if (keys['KeyS']) move.addScaledVector(forward, -speed * dt);
+  if (keys['KeyA']) move.addScaledVector(right, -speed * dt);
+  if (keys['KeyD']) move.addScaledVector(right, speed * dt);
+  if (keys['KeyE']) move.addScaledVector(upv, speed * dt);
+  if (keys['KeyQ']) move.addScaledVector(upv, -speed * dt);
+  if (move.lengthSq() > 0) {
+    camera.position.add(move);
+    controls.target.add(move);
+  }
+}
+
+// Interrupt nothing special on drag, but keep autorotate behavior intact
+controls.addEventListener('start', () => {});
+
+// ====================== Hover tooltip (raycaster on 3D objects) ======================
+const hoverTip = document.getElementById('hoverTip');
+const raycaster = new THREE.Raycaster();
+const mouseNDC = new THREE.Vector2();
+let lastHoverId = null;
+
+const labelDefMap = Object.fromEntries(labelDefs.map(d => [d.id, d]));
+
+function collectHoverables() {
+  const arr = [];
+  scene.traverse(o => { if (o.userData && o.userData.labelId && o.visible !== false) arr.push(o); });
+  return arr;
+}
+
+renderer.domElement.addEventListener('mousemove', (ev) => {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouseNDC.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+  mouseNDC.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouseNDC, camera);
+  const targets = collectHoverables();
+  const hits = raycaster.intersectObjects(targets, true);
+  // walk up to find first object with labelId
+  let found = null;
+  for (const h of hits) {
+    let o = h.object;
+    while (o && !(o.userData && o.userData.labelId)) o = o.parent;
+    if (o && o.userData && o.userData.labelId) { found = o.userData.labelId; break; }
+  }
+  if (found) {
+    const def = labelDefMap[found];
+    hoverTip.className = '';
+    if (def.tone) hoverTip.classList.add(def.tone);
+    hoverTip.innerHTML = def.title + '<div class="sub">click for details</div>';
+    hoverTip.style.left = ev.clientX + 'px';
+    hoverTip.style.top = ev.clientY + 'px';
+    hoverTip.style.display = 'block';
+    renderer.domElement.style.cursor = 'pointer';
+    lastHoverId = found;
+  } else {
+    hoverTip.style.display = 'none';
+    renderer.domElement.style.cursor = '';
+    lastHoverId = null;
+  }
+});
+
+renderer.domElement.addEventListener('mouseleave', () => {
+  hoverTip.style.display = 'none';
+  renderer.domElement.style.cursor = '';
+  lastHoverId = null;
+});
+
+// Click on canvas opens popover for the hovered feature
+renderer.domElement.addEventListener('click', (ev) => {
+  if (lastHoverId && labelDefMap[lastHoverId]) {
+    ev.stopPropagation();
+    showPopover(labelDefMap[lastHoverId], ev);
+  }
+});
+
+// ====================== Resize ======================
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  lensPass.uniforms.aspect.value = window.innerWidth / window.innerHeight;
+});
+
+// ====================== Build & initial view ======================
+buildBlackHole();
+setupTDE();
+focusOn(BH_POS, bhParams.mass * 15, bhParams.mass * 4);
+
+// ====================== Animation loop ======================
+const clock = new THREE.Clock();
+function animate() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  applyKeyboard(dt);
+  controls.update();
+
+  // Black hole animations
+  if (accretionDisk) accretionDisk.material.uniforms.time.value = t * bhParams.spin;
+  if (eventHorizon) eventHorizon.material.uniforms.time.value = t;
+  if (diskTilt) diskTilt.rotation.z = t * 0.05 * bhParams.spin;
+  if (photonSphere) photonSphere.material.opacity = 0.75 + 0.2 * Math.sin(t * 3.0);
+
+  // Tidal disruption event
+  updateTDE(dt);
+
+  // Infalling particles
+  if (infallingGroup && infallingGroup.visible) {
+    const u = infallingGroup.userData;
+    for (let i = 0; i < u.count; i++) {
+      const s = u.states[i];
+      s.theta += dt * s.speed * (1.0 + 2.0 / Math.max(s.r, 0.3));
+      s.r *= s.decay;
+      if (s.r < bhParams.mass * 1.05) {
+        s.r = 3 + Math.random() * 5;
+        s.theta = Math.random() * Math.PI * 2;
+      }
+      u.positions[i*3]   = s.r * Math.cos(s.theta);
+      u.positions[i*3+1] = 0;
+      u.positions[i*3+2] = s.r * Math.sin(s.theta);
+    }
+    u.geom.attributes.position.needsUpdate = true;
+  }
+
+  // Field layers
+  updateGravityWell(dt);
+  updateMagField(t);
+
+  // ---------- Fall into black hole ----------
+  if (state.falling) {
+    state.fallT += dt;
+    const Rs = bhParams.mass;
+    const totalTime = 10.0;
+    const u = Math.min(state.fallT / totalTime, 1.0);
+    // Cubic ease-in: acceleration toward BH (gravity)
+    const eased = u * u * u;
+    const targetDist = Rs * 0.2;
+    const dist = state.fallStartDist * (1 - eased) + targetDist * eased;
+    const dir = state.fallStartPos.clone().sub(BH_POS).normalize();
+    camera.position.copy(BH_POS).addScaledVector(dir, dist);
+    camera.lookAt(BH_POS);
+    controls.target.copy(BH_POS);
+
+    // Phase detection based on distance to horizon
+    let phase;
+    if (dist > Rs * 8) phase = 'approach';
+    else if (dist > Rs * 3.2) phase = 'isco';
+    else if (dist > Rs * 1.55) phase = 'photon';
+    else if (dist > Rs * 1.05) phase = 'horizon';
+    else if (dist > Rs * 0.7)  phase = 'crossing';
+    else                        phase = 'inside';
+    if (phase !== state.fallPhase) { state.fallPhase = phase; setNarration(phase); }
+
+    // Distance readout
+    const dRs = (dist / Rs).toFixed(2);
+    fallDist.textContent = `r = ${dRs} Rs`;
+
+    // Lensing effects ramp with proximity
+    const proximity = THREE.MathUtils.clamp(1 - (dist - Rs) / (state.fallStartDist - Rs), 0, 1);
+    lensPass.uniforms.lensStrength.value = 0.3 + proximity * 3.5;
+    lensPass.uniforms.blueshift.value = Math.pow(proximity, 1.5);
+    lensPass.uniforms.vignette.value = Math.max(0, (proximity - 0.55) / 0.45);
+    // Black out as we cross
+    if (dist < Rs * 1.05) {
+      const k = THREE.MathUtils.clamp((Rs * 1.05 - dist) / (Rs * 0.6), 0, 1);
+      lensPass.uniforms.blackout.value = k;
+    } else {
+      lensPass.uniforms.blackout.value = 0;
+    }
+
+    // End and reset
+    if (state.fallT > totalTime + 3) {
+      stopFall();
+      focusOn(BH_POS, Rs * 12, Rs * 3);
+    }
+  } else {
+    // Proximity-based ambient lensing when near the BH
+    const camDist = camera.position.distanceTo(BH_POS);
+    const proximity = 1 - THREE.MathUtils.smoothstep(camDist, bhParams.mass * 4, bhParams.mass * 25);
+    lensPass.uniforms.lensStrength.value = proximity * 0.7;
+  }
+
+  // Project BH to screen for the lens shader
+  const bhProj = BH_POS.clone().project(camera);
+  lensPass.uniforms.bhScreenPos.value.set((bhProj.x + 1) * 0.5, (bhProj.y + 1) * 0.5);
+  lensPass.uniforms.bhVisible.value = (bhProj.z > -1 && bhProj.z < 1) ? 1.0 : 0.0;
+
+  // Update HTML labels
+  if (state.showLabels) {
+    labelDefs.forEach(def => {
+      const el = labelEls[def.id];
+      const p = projectToScreen(def.pos());
+      el.style.left = p.x + 'px';
+      el.style.top = p.y + 'px';
+      el.style.opacity = p.visible ? '1' : '0';
+      el.style.pointerEvents = p.visible ? 'auto' : 'none';
+    });
+  } else {
+    labelDefs.forEach(def => { labelEls[def.id].style.opacity = '0'; labelEls[def.id].style.pointerEvents = 'none'; });
+  }
+
+  composer.render();
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>

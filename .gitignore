@@ -1,0 +1,12 @@
+# Python proof artifacts
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# proof renders (regenerate from the *_proof.py scripts)
+star_hero.png
+star_strip.png
+field_proof.png
+frag_extracted.glsl

@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Kerr Black Hole — Spinning, Ray-Traced</title>
+<style>
+  :root { --fg:#e8eef7; --accent:#7cf; --warm:#ffb169; --hot:#ff7755; --spin:#b69cff;
+          --panel:rgba(10,14,28,0.78); --border:rgba(124,207,255,0.25); }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; background:#000; color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif; }
+  canvas { display:block; }
+  #ui { position:fixed; inset:0; pointer-events:none; z-index:10; }
+  .panel { position:absolute; pointer-events:auto; background:var(--panel);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--border); border-radius:14px; padding:14px 16px; font-size:13px; line-height:1.5;
+    box-shadow:0 8px 40px rgba(0,0,0,0.55); }
+  #title { top:18px; left:18px; max-width:352px; }
+  #title h1 { margin:0 0 4px; font-size:16px; font-weight:600; letter-spacing:0.3px; color:var(--spin); }
+  #title p { margin:0; opacity:0.78; font-size:12px; }
+  #controls { top:18px; right:18px; min-width:268px; max-height:calc(100vh - 36px); overflow-y:auto; }
+  #controls h2 { margin:0 0 10px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:1.2px; opacity:0.65; }
+  #controls h2:not(:first-child) { margin-top:14px; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:4px 0; }
+  .row label { font-size:12px; }
+  .row input[type=range] { flex:1; min-width:0; }
+  .row .val { font-size:10.5px; opacity:0.62; font-family:ui-monospace,monospace; min-width:34px; text-align:right; }
+  button.toggle, button.action { background:transparent; color:var(--fg); border:1px solid var(--border);
+    border-radius:8px; padding:5px 9px; font-size:11.5px; cursor:pointer; transition:all 0.15s ease; }
+  button.toggle.on { background:rgba(124,207,255,0.18); border-color:var(--accent); color:var(--accent); }
+  button.toggle:hover, button.action:hover { border-color:var(--accent); }
+  .readout { font-size:11px; opacity:0.72; font-family:ui-monospace,monospace; line-height:1.7; margin-top:4px; }
+  .readout b { color:var(--spin); font-weight:600; }
+  #info { bottom:18px; left:18px; max-width:432px; }
+  #info h3 { margin:0 0 6px; font-size:13px; color:var(--warm); }
+  #info p { margin:0 0 8px; font-size:12.5px; opacity:0.88; }
+  #info b { color:var(--accent); }
+  #info .tabs { display:flex; gap:4px; margin-bottom:10px; flex-wrap:wrap; }
+  #info .tab { font-size:11px; padding:4px 9px; border-radius:6px; background:rgba(255,255,255,0.05); cursor:pointer; opacity:0.6; }
+  #info .tab.active { background:rgba(182,156,255,0.2); color:var(--spin); opacity:1; }
+  #info .tab:hover { opacity:0.95; }
+  #legend { bottom:18px; right:18px; font-size:11.5px; opacity:0.82; max-width:252px; }
+  #legend h2 { margin:0 0 8px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:1.2px; opacity:0.65; }
+  #legend .key { display:flex; align-items:center; gap:8px; margin:4px 0; font-size:11.5px; }
+  .swatch { width:12px; height:12px; border-radius:2px; flex-shrink:0; }
+  .label3d { position:absolute; pointer-events:auto; background:rgba(10,14,28,0.88); border:1px solid var(--border);
+    color:var(--accent); font-size:10.5px; padding:3px 7px; border-radius:6px; white-space:nowrap;
+    transform:translate(-50%,-50%); transition:opacity 0.2s,transform 0.1s; cursor:pointer; user-select:none; font-weight:500; }
+  .label3d:hover { transform:translate(-50%,-50%) scale(1.08); }
+  .label3d.warm { color:var(--warm); border-color:rgba(255,177,105,0.4); }
+  .label3d.hot  { color:var(--hot);  border-color:rgba(255,119,85,0.4); }
+  .label3d.spin { color:var(--spin); border-color:rgba(182,156,255,0.45); }
+  .label3d::before { content:''; position:absolute; left:-8px; top:50%; width:6px; height:6px;
+    background:currentColor; border-radius:50%; transform:translate(-50%,-50%); opacity:0.85; }
+  #popover { position:fixed; pointer-events:auto; max-width:362px; background:rgba(10,14,28,0.94);
+    backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); border:1px solid var(--border);
+    border-radius:12px; padding:14px 16px; font-size:13px; line-height:1.55; box-shadow:0 12px 50px rgba(0,0,0,0.6);
+    z-index:100; display:none; }
+  #popover h4 { margin:0 0 6px; font-size:13.5px; color:var(--accent); }
+  #popover.warm h4 { color:var(--warm); } #popover.hot h4 { color:var(--hot); } #popover.spin h4 { color:var(--spin); }
+  #popover p { margin:0; font-size:12.5px; opacity:0.92; }
+  #popover .close { position:absolute; top:8px; right:10px; cursor:pointer; opacity:0.55; font-size:16px; line-height:1; }
+  #popover .close:hover { opacity:1; }
+  #hint { position:absolute; bottom:18px; left:50%; transform:translateX(-50%); pointer-events:none;
+    font-size:11px; opacity:0.55; letter-spacing:0.4px; text-align:center; }
+  #fps { position:absolute; top:18px; left:50%; transform:translateX(-50%); pointer-events:none;
+    font-size:10.5px; opacity:0.42; font-family:ui-monospace,monospace; }
+  #hoverTip { position:fixed; pointer-events:none; z-index:50; background:rgba(10,14,28,0.92);
+    border:1px solid var(--border); color:var(--accent); font-size:11.5px; padding:5px 9px; border-radius:6px;
+    transform:translate(12px,12px); display:none; white-space:nowrap; box-shadow:0 4px 18px rgba(0,0,0,0.5); font-weight:500; }
+  #hoverTip.warm { color:var(--warm); border-color:rgba(255,177,105,0.4); }
+  #hoverTip.hot  { color:var(--hot);  border-color:rgba(255,119,85,0.4); }
+  #hoverTip.spin { color:var(--spin); border-color:rgba(182,156,255,0.45); }
+  #hoverTip .sub { font-size:10.5px; opacity:0.65; font-weight:400; margin-top:1px; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <div id="title" class="panel">
+    <h1>Kerr Black Hole · Spinning</h1>
+    <p>A rotating black hole, ray-traced by integrating the full Kerr geodesic per pixel. Crank the spin and watch the shadow go lopsided, the disk beam asymmetrically, and the ergosphere swell — all real frame-dragging. Drag to orbit, scroll zoom, WASD fly, or <b>Fall in</b>.</p>
+  </div>
+
+  <div id="controls" class="panel">
+    <h2>Black hole</h2>
+    <div class="row"><label>Mass (Rs)</label><input id="bhMass" type="range" min="0.8" max="3.5" step="0.05" value="1.8"><span class="val" id="vMass"></span></div>
+    <div class="row"><label>Spin a/M</label><input id="bhSpin" type="range" min="0" max="0.998" step="0.002" value="0"><span class="val" id="vSpin"></span></div>
+    <div class="readout" id="readout"></div>
+    <div style="font-size:10.5px; opacity:0.5; margin-top:6px;">Drag down toward the equator for the strongest spin asymmetry.</div>
+
+    <h2>View</h2>
+    <div class="row"><label>Auto-rotate</label><button id="btnRotate" class="toggle">Off</button></div>
+    <div class="row"><label>Labels</label><button id="btnLabels" class="toggle on">On</button></div>
+    <div class="row"><label>Accretion disk</label><button id="btnDisk" class="toggle on">On</button></div>
+    <div class="row"><label>Ergosphere</label><button id="btnErgo" class="toggle">Off</button></div>
+    <div class="row"><label>Quality</label><button id="btnQuality" class="toggle on">Low</button></div>
+    <div class="row"><label>Fall into BH</label><button id="btnFall" class="toggle" style="border-color:rgba(255,119,85,0.5); color:#ff7755;">Fall in</button></div>
+
+    <h2>Camera</h2>
+    <div class="row"><label>Focus</label>
+      <span style="display:flex;gap:5px;">
+        <button id="focusClose" class="action">Close</button>
+        <button id="focusDisk" class="action">Disk</button>
+        <button id="focusWide" class="action">Wide</button>
+      </span>
+    </div>
+  </div>
+
+  <div id="info" class="panel">
+    <div class="tabs">
+      <div class="tab active" data-tab="overview">Overview</div>
+      <div class="tab" data-tab="spin">Spin & dragging</div>
+      <div class="tab" data-tab="howit">How it's drawn</div>
+      <div class="tab" data-tab="reality">Reality check</div>
+    </div>
+    <div id="tabContent"></div>
+  </div>
+
+  <div id="legend" class="panel">
+    <h2>Legend</h2>
+    <div class="key"><div class="swatch" style="background:#000;border:1px solid #ff7755"></div>Shadow (lopsided with spin)</div>
+    <div class="key"><div class="swatch" style="background:#ffe9b0"></div>Photon ring</div>
+    <div class="key"><div class="swatch" style="background:linear-gradient(90deg,#bfe0ff,#ff5522)"></div>Disk · Doppler-beamed</div>
+    <div class="key"><div class="swatch" style="background:rgba(150,210,255,0.5)"></div>Ergosphere (frame-dragging zone)</div>
+  </div>
+
+  <div id="hint">left-drag orbit · right-drag pan · scroll zoom · WASD + QE fly · Shift boost · R reset</div>
+  <div id="fps"></div>
+</div>
+
+<div id="popover"><span class="close">×</span><h4></h4><p></p></div>
+<div id="hoverTip"></div>
+
+<div id="fallNarration" class="panel" style="display:none; bottom:84px; left:50%; transform:translateX(-50%); max-width:520px; text-align:left; border-color:rgba(255,119,85,0.5);">
+  <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
+    <h3 id="fallTitle" style="margin:0; color:#ff7755; font-size:14px;"></h3>
+    <span id="fallDist" style="font-size:11px; opacity:0.6; font-family:ui-monospace,monospace;"></span>
+  </div>
+  <p id="fallBody" style="margin:0; font-size:12.5px; opacity:0.9; line-height:1.5;"></p>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:'high-performance' });
+renderer.setPixelRatio(1);
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.05, 2000);
+const BH_POS = new THREE.Vector3(0,0,0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.07;
+controls.minDistance = 0.05; controls.maxDistance = 300;
+controls.autoRotate = false; controls.autoRotateSpeed = 0.3;
+controls.enablePan = true; controls.screenSpacePanning = true;
+controls.keys = { LEFT:'', UP:'', RIGHT:'', BOTTOM:'' };
+controls.target.copy(BH_POS);
+
+// ---- parameters ----
+let bhParams = { mass:1.8, spin:0.0 };   // spin = a/M in [0,0.998]; opens at 0 (symmetric)
+let qualityHigh = false, stepCount = 72;   // default to performance mode; the Kerr marcher is heavy
+
+// ---- spin-dependent radii (M=1 units) ----
+function kerrRadii(a){
+  const rp = 1 + Math.sqrt(Math.max(1-a*a,0));               // outer horizon
+  const phPro = 2*(1+Math.cos(2/3*Math.acos(-a)));           // prograde photon orbit
+  const phRet = 2*(1+Math.cos(2/3*Math.acos(a)));            // retrograde photon orbit
+  const Z1 = 1 + Math.cbrt(1-a*a)*(Math.cbrt(1+a)+Math.cbrt(1-a));
+  const Z2 = Math.sqrt(3*a*a + Z1*Z1);
+  const iscoPro = 3 + Z2 - Math.sqrt(Math.max((3-Z1)*(3+Z1+2*Z2),0));
+  const iscoRet = 3 + Z2 + Math.sqrt(Math.max((3-Z1)*(3+Z1+2*Z2),0));
+  return { rp, phPro, phRet, iscoPro, iscoRet };
+}
+
+// ====================== Kerr ray-march material ======================
+const bhMaterial = new THREE.ShaderMaterial({
+  depthWrite:false, depthTest:false,
+  uniforms:{
+    uResolution:{value:new THREE.Vector2(1,1)},
+    uCamPos:{value:new THREE.Vector3()},
+    uCamRight:{value:new THREE.Vector3()}, uCamUp:{value:new THREE.Vector3()}, uCamForward:{value:new THREE.Vector3()},
+    uTanHalfFov:{value:Math.tan(THREE.MathUtils.degToRad(55)/2)}, uAspect:{value:1},
+    uM:{value:bhParams.mass/2}, uA:{value:bhParams.spin},
+    uRplus:{value:1.6}, uDiskIn:{value:3}, uDiskOut:{value:18},
+    uTime:{value:0}, uDiskOn:{value:1}, uErgoOn:{value:0},
+    uBlueshift:{value:0}, uBlackout:{value:0}, uSteps:{value:stepCount},
+  },
+  vertexShader:/* glsl */`void main(){ gl_Position = vec4(position.xy,0.0,1.0); }`,
+  fragmentShader:/* glsl */`
+    precision highp float;
+    uniform vec2 uResolution;
+    uniform vec3 uCamPos,uCamRight,uCamUp,uCamForward;
+    uniform float uTanHalfFov,uAspect,uM,uA,uRplus,uDiskIn,uDiskOut;
+    uniform float uTime,uDiskOn,uErgoOn,uBlueshift,uBlackout,uSteps;
+
+    const int   MAX_STEPS = 300;
+    const float ESCAPE = 55.0;     // M units
+
+    // ---------- inverse Kerr metric (M=1) ----------
+    void invMetric(float r,float th, out float gtt,out float gtp,out float gpp,out float grr,out float gth){
+      float s2=sin(th)*sin(th); float c2=cos(th)*cos(th);
+      float Sig=r*r+uA*uA*c2;
+      float Dl=r*r-2.0*r+uA*uA;
+      float Dls=(abs(Dl)<1e-4)? (Dl>=0.0?1e-4:-1e-4):Dl;
+      float A=(r*r+uA*uA)*(r*r+uA*uA)-uA*uA*Dl*s2;
+      gtt=-A/(Sig*Dls); gtp=-2.0*uA*r/(Sig*Dls);
+      gpp=(Dl-uA*uA*s2)/(Sig*Dls*max(s2,1e-7)); grr=Dl/Sig; gth=1.0/Sig;
+    }
+    float Ham2(float r,float th,float pr,float pth,float L){
+      float gtt,gtp,gpp,grr,gth; invMetric(r,th,gtt,gtp,gpp,grr,gth);
+      return grr*pr*pr+gth*pth*pth+gtt-2.0*gtp*L+gpp*L*L;   // E=1
+    }
+    // canonical RHS: returns d/dλ of (r,th,phi,pr,pth)
+    void rhs(float r,float th,float phi,float pr,float pth,float L,
+             out float dr,out float dth,out float dphi,out float dpr,out float dpth){
+      float gtt,gtp,gpp,grr,gth; invMetric(r,th,gtt,gtp,gpp,grr,gth);
+      dr=grr*pr; dth=gth*pth; dphi=-gtp+gpp*L;
+      float e=1e-4;
+      dpr =-(Ham2(r+e,th,pr,pth,L)-Ham2(r-e,th,pr,pth,L))/(4.0*e);
+      dpth=-(Ham2(r,th+e,pr,pth,L)-Ham2(r,th-e,pr,pth,L))/(4.0*e);
+    }
+
+    // ---------- oblate-spheroidal Cartesian <-> Boyer-Lindquist ----------
+    void cart2bl(vec3 P, out float r,out float th,out float phi){
+      float a=uA; float rho2=dot(P,P);
+      float t=0.5*(rho2-a*a);
+      r=sqrt(max(t+sqrt(max(t*t+a*a*P.z*P.z,0.0)),1e-6));
+      th=acos(clamp(P.z/max(r,1e-6),-1.0,1.0));
+      phi=atan(P.y,P.x);
+    }
+    // Jacobian columns d(x,y,z)/d(r,th,phi)
+    void jac(float r,float th,float phi, out vec3 c0,out vec3 c1,out vec3 c2){
+      float a=uA; float R=sqrt(r*r+a*a);
+      float st=sin(th),ct=cos(th),cp=cos(phi),sp=sin(phi);
+      c0=vec3((r/R)*st*cp,(r/R)*st*sp,ct);
+      c1=vec3(R*ct*cp,R*ct*sp,-r*st);
+      c2=vec3(-R*st*sp,R*st*cp,0.0);
+    }
+
+    float hash31(vec3 p){ p=fract(p*0.3183099+0.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+    vec3 starSky(vec3 dir){
+      vec3 d=normalize(dir);
+      float a=pow(max(0.0,d.y),1.5)*0.13, b=pow(max(0.0,-d.y),1.5)*0.10, c=pow(max(0.0,d.x),1.5)*0.08;
+      vec3 col=vec3(0.09,0.12,0.26)*a+vec3(0.26,0.10,0.18)*b+vec3(0.30,0.16,0.07)*c+vec3(0.010,0.013,0.025);
+      for(int k=0;k<3;k++){ float sc=70.0+float(k)*95.0; vec3 g=floor(d*sc); float h=hash31(g+float(k)*7.0);
+        if(h>0.9915){ float tw=0.6+0.4*sin(uTime*1.8+h*40.0); col+=vec3(0.85,0.92,1.0)*((h-0.9915)/0.0085)*tw; } }
+      return col;
+    }
+
+    // Kerr disk colour with combined gravitational + Doppler factor g = nu_obs/nu_emit
+    vec3 diskColor(float r,float phi,float L,out float emit){
+      float t=clamp((r-uDiskIn)/(uDiskOut-uDiskIn),0.0,1.0);
+      vec3 hot=vec3(1.0,0.96,0.86),mid=vec3(1.0,0.55,0.20),cool=vec3(0.55,0.12,0.05);
+      vec3 col=mix(hot,mid,smoothstep(0.0,0.4,t)); col=mix(col,cool,smoothstep(0.4,1.0,t));
+      float num=sqrt(max(1.0-3.0/r+2.0*uA/pow(r,1.5),1e-3));   // orbiting-emitter time dilation
+      float Om=1.0/(pow(r,1.5)+uA);                            // prograde orbital angular velocity
+      float g=num/max(1.0-Om*L,1e-3);                          // L = photon's conserved axial b (E=1)
+      g=clamp(g,0.25,3.0);
+      float beaming=g*g*g;
+      float swirl=0.5+0.5*sin(phi*3.0-uTime*Om*9.0+r*1.4);
+      float fine =0.5+0.5*sin(phi*13.0+uTime*Om*16.0-r*3.0);
+      float band=mix(swirl,fine,0.4);
+      float edge=smoothstep(0.0,0.05,t)*smoothstep(1.0,0.82,t);
+      col*=beaming;
+      col=mix(col,col*vec3(0.65,0.82,1.4),clamp((g-1.0)*0.8,0.0,0.7));  // bluer where boosted
+      emit=(0.45+band*0.95)*edge;
+      return col;
+    }
+
+    void main(){
+      vec2 uv=(gl_FragCoord.xy/uResolution)*2.0-1.0;
+      vec3 D=normalize(uCamForward+uv.x*uAspect*uTanHalfFov*uCamRight+uv.y*uTanHalfFov*uCamUp);
+      // align Kerr spin axis with world +Y: permute world(x,y,z) -> BL(X=z, Y=x, Z=y)
+      vec3 Dbl=vec3(D.z,D.x,D.y);
+      vec3 C=vec3(uCamPos.z,uCamPos.x,uCamPos.y)/uM;   // camera position (M units, BL frame)
+
+      // --- initial conditions: map camera ray to (L, pr, pth) with E=1 ---
+      float r,th,phi; cart2bl(C,r,th,phi);
+      vec3 c0,c1,c2; jac(r,th,phi,c0,c1,c2);
+      float det=dot(c0,cross(c1,c2));
+      vec3 rr0=cross(c1,c2)/det, rr1=cross(c2,c0)/det, rr2=cross(c0,c1)/det;
+      float rd=dot(rr0,Dbl), thd=dot(rr1,Dbl), phd=dot(rr2,Dbl);   // coordinate velocities (spatial)
+      // covariant metric for lowering + null normalisation
+      float s2=sin(th)*sin(th),c2c=cos(th)*cos(th);
+      float Sig=r*r+uA*uA*c2c, Dl=r*r-2.0*r+uA*uA, Aa=(r*r+uA*uA)*(r*r+uA*uA)-uA*uA*Dl*s2;
+      float g_tt=-(1.0-2.0*r/Sig), g_tp=-2.0*uA*r*s2/Sig, g_pp=Aa*s2/Sig, g_rr=Sig/Dl, g_th=Sig;
+      float S=g_rr*rd*rd+g_th*thd*thd+g_pp*phd*phd;
+      float Bq=2.0*g_tp*phd, disc=Bq*Bq-4.0*g_tt*S;
+      float td=(-Bq-sqrt(max(disc,0.0)))/(2.0*g_tt);
+      if(td<0.0) td=(-Bq+sqrt(max(disc,0.0)))/(2.0*g_tt);
+      float pr=g_rr*rd, pth=g_th*thd;
+      float E=-(g_tt*td+g_tp*phd);
+      float L=g_pp*phd+g_tp*td;
+      float invE=1.0/((abs(E)<1e-6)?1e-6:E);
+      L*=invE; pr*=invE; pth*=invE;          // set E=1
+
+      // --- integrate ---
+      vec3 acc=vec3(0.0); float alpha=0.0; float ergo=0.0;
+      bool captured=false, escaped=false;
+      float prevCos=cos(th);
+      for(int i=0;i<MAX_STEPS;i++){
+        if(float(i)>=uSteps) break;
+        if(r<uRplus*1.002){ captured=true; break; }
+        if(r>ESCAPE){ escaped=true; break; }
+        float dl=clamp(0.10*(r-uRplus*0.999),0.012,1.2);
+
+        float k1r,k1t,k1p,k1pr,k1pt; rhs(r,th,phi,pr,pth,L,k1r,k1t,k1p,k1pr,k1pt);
+        float k2r,k2t,k2p,k2pr,k2pt; rhs(r+0.5*dl*k1r,th+0.5*dl*k1t,phi,pr+0.5*dl*k1pr,pth+0.5*dl*k1pt,L,k2r,k2t,k2p,k2pr,k2pt);
+        float k3r,k3t,k3p,k3pr,k3pt; rhs(r+0.5*dl*k2r,th+0.5*dl*k2t,phi,pr+0.5*dl*k2pr,pth+0.5*dl*k2pt,L,k3r,k3t,k3p,k3pr,k3pt);
+        float k4r,k4t,k4p,k4pr,k4pt; rhs(r+dl*k3r,th+dl*k3t,phi,pr+dl*k3pr,pth+dl*k3pt,L,k4r,k4t,k4p,k4pr,k4pt);
+        float nr =r  +(dl/6.0)*(k1r+2.0*k2r+2.0*k3r+k4r);
+        float nth=th +(dl/6.0)*(k1t+2.0*k2t+2.0*k3t+k4t);
+        float nph=phi+(dl/6.0)*(k1p+2.0*k2p+2.0*k3p+k4p);
+        pr  =pr +(dl/6.0)*(k1pr+2.0*k2pr+2.0*k3pr+k4pr);
+        pth =pth+(dl/6.0)*(k1pt+2.0*k2pt+2.0*k3pt+k4pt);
+
+        // equatorial disk crossing
+        float nc=cos(nth);
+        if(uDiskOn>0.5 && prevCos*nc<0.0){
+          float f=prevCos/(prevCos-nc); float rc=mix(r,nr,f); float pc=mix(phi,nph,f);
+          if(rc>=uDiskIn && rc<=uDiskOut){
+            float emit; vec3 dc=diskColor(rc,pc,L,emit);
+            float aS=clamp(emit,0.0,1.0)*0.92;
+            acc+=(1.0-alpha)*dc*emit; alpha+=(1.0-alpha)*aS;
+          }
+        }
+        // ergosphere haze (between horizon and static limit r_E = 1 + sqrt(1 - a^2 cos^2θ))
+        if(uErgoOn>0.5){
+          float rE=1.0+sqrt(max(1.0-uA*uA*cos(nth)*cos(nth),0.0));
+          if(nr<rE && nr>uRplus) ergo+=dl*0.18;
+        }
+        prevCos=nc; r=nr; th=nth; phi=nph;
+        if(alpha>0.99) break;
+      }
+
+      // background via final lensed direction
+      vec3 bg;
+      if(captured){ bg=vec3(0.0); }
+      else {
+        float gtt,gtp,gpp,grr,gth; invMetric(r,th,gtt,gtp,gpp,grr,gth);
+        float dr2=grr*pr, dth2=gth*pth, dph2=-gtp+gpp*L;
+        vec3 j0,j1,j2; jac(r,th,phi,j0,j1,j2);
+        vec3 outDir=normalize(j0*dr2+j1*dth2+j2*dph2);
+        bg=starSky(outDir);
+      }
+      vec3 col=acc+(1.0-alpha)*bg;
+      col+=vec3(0.30,0.62,0.95)*ergo;          // ergosphere tint
+      col=mix(col,col*vec3(0.55,0.8,1.6),uBlueshift);
+      col=mix(col,vec3(0.0),uBlackout);
+
+      col*=1.15;
+      col=(col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14);
+      col=pow(clamp(col,0.0,1.0),vec3(1.0/2.2));
+      gl_FragColor=vec4(col,1.0);
+    }
+  `,
+});
+
+const fsScene=new THREE.Scene();
+const fsCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const fsQuad=new THREE.Mesh(new THREE.PlaneGeometry(2,2), bhMaterial); fsQuad.frustumCulled=false;
+fsScene.add(fsQuad);
+
+// ====================== hover proxies (invisible) ======================
+const proxyScene=new THREE.Scene();
+const diskTilt=new THREE.Group(); proxyScene.add(diskTilt);
+function invisible(){ return new THREE.MeshBasicMaterial({visible:false}); }
+function buildProxies(){
+  for(let i=proxyScene.children.length-1;i>=0;i--){ const c=proxyScene.children[i]; if(c!==diskTilt){ proxyScene.remove(c); c.geometry?.dispose?.(); } }
+  while(diskTilt.children.length){ const c=diskTilt.children.pop(); c.geometry?.dispose?.(); }
+  const M=bhParams.mass/2, R=kerrRadii(bhParams.spin);
+  const horizonW=R.rp*M, photonW=R.phPro*M, iscoW=R.iscoPro*M, ergoW=2.0*M, diskOutW=18*M;
+  let m;
+  m=new THREE.Mesh(new THREE.SphereGeometry(horizonW,20,20),invisible()); m.userData.labelId='eh'; proxyScene.add(m);
+  m=new THREE.Mesh(new THREE.SphereGeometry(ergoW,20,20),invisible()); m.scale.y=0.55; m.userData.labelId='ergo'; proxyScene.add(m);
+  m=new THREE.Mesh(new THREE.SphereGeometry(horizonW*0.4,10,10),invisible()); m.userData.labelId='singularity'; proxyScene.add(m);
+  m=new THREE.Mesh(new THREE.TorusGeometry(photonW,0.3,8,40),invisible()); m.rotation.x=Math.PI/2; m.userData.labelId='photon'; proxyScene.add(m);
+  diskTilt.rotation.set(0,0,0);   // disk = spin-equatorial plane (world XZ); spin axis = world +Y
+  m=new THREE.Mesh(new THREE.TorusGeometry(iscoW,0.32,8,40),invisible()); m.rotation.x=Math.PI/2; m.userData.labelId='isco'; diskTilt.add(m);
+  m=new THREE.Mesh(new THREE.RingGeometry(iscoW,diskOutW,40,1),invisible()); m.rotation.x=Math.PI/2; m.userData.labelId='disk'; diskTilt.add(m);
+  m=new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.25,horizonW*8,10,1,true),invisible()); m.userData.labelId='spin'; diskTilt.add(m);
+  proxyScene.updateMatrixWorld(true);
+}
+
+// ====================== labels ======================
+const popover=document.getElementById('popover'), popH4=popover.querySelector('h4'), popP=popover.querySelector('p');
+popover.querySelector('.close').addEventListener('click',()=>popover.style.display='none');
+document.addEventListener('click',(e)=>{ if(!popover.contains(e.target)&&!e.target.classList?.contains('label3d')) popover.style.display='none'; });
+function showPopover(def,ev){ popover.className=''; if(def.tone) popover.classList.add(def.tone);
+  popH4.textContent=def.title; popP.innerHTML=def.explain; popover.style.display='block';
+  popover.style.left=Math.min(ev.clientX+14,window.innerWidth-380)+'px';
+  popover.style.top=Math.min(ev.clientY+14,window.innerHeight-180)+'px'; }
+
+const labelDefs=[
+  { id:'eh', title:'Event horizon', tone:'hot',
+    pos:()=>{ const M=bhParams.mass/2,R=kerrRadii(bhParams.spin); return new THREE.Vector3(R.rp*M+0.3,R.rp*M*0.5,0); },
+    explain:'The outer horizon sits at <b>r₊ = M + √(M² − a²)</b>. Spinning the hole up (raising a/M) <b>shrinks</b> the horizon — at maximal spin it halves, from 2M down to M. The dark shadow you see is larger and, with spin, noticeably off-center.' },
+  { id:'ergo', title:'Ergosphere', tone:'spin',
+    pos:()=>{ const M=bhParams.mass/2; return new THREE.Vector3(-2.0*M-0.3,0.1,0); },
+    explain:'Between the horizon and the <b>static limit</b> lies the <b>ergosphere</b>. Inside it, frame-dragging is so strong that <b>nothing can stay still</b> — every object, even light, is forced to co-rotate with the hole. It bulges at the equator and only appears when a > 0. Toggle it on to see the shell.' },
+  { id:'singularity', title:'Ring singularity', tone:'hot',
+    pos:()=>new THREE.Vector3(0,-bhParams.mass*0.3,0),
+    explain:'A spinning black hole\'s singularity is not a point but a <b>ring</b> of radius a, lying in the equatorial plane. As with Schwarzschild it is hidden behind the horizon — general relativity breaks down there.' },
+  { id:'photon', title:'Photon ring', tone:'warm',
+    pos:()=>{ const M=bhParams.mass/2,R=kerrRadii(bhParams.spin); return new THREE.Vector3(0,R.phPro*M+0.3,R.phPro*M); },
+    explain:'Spin splits the light-orbit radius in two: <b>prograde</b> photons (co-rotating) orbit closer in, <b>retrograde</b> ones farther out. That asymmetry is a big part of why the bright ring and shadow go lopsided.' },
+  { id:'isco', title:'ISCO (prograde)', tone:'hot',
+    pos:()=>{ const M=bhParams.mass/2,R=kerrRadii(bhParams.spin); return new THREE.Vector3(R.iscoPro*M+0.3,0.3,-R.iscoPro*M*0.5); },
+    explain:'The innermost stable orbit moves <b>inward</b> for a co-rotating disk as spin rises — from 6M (a=0) down toward 1M (a→M). The disk\'s inner edge follows it, so a fast spin lets gas orbit much deeper before plunging.' },
+  { id:'disk', title:'Accretion disk', tone:'warm',
+    pos:()=>{ const M=bhParams.mass/2,R=kerrRadii(bhParams.spin); return new THREE.Vector3(R.iscoPro*M+9,0.2,1.5); },
+    explain:'Brightness here uses the real Kerr factor <b>g = √(1 − 3/r + 2a/r^{3/2}) / (1 − Ω b)</b> combining gravitational redshift and Doppler beaming. The approaching, co-rotating side blazes brighter and bluer; the far side dims and reddens.' },
+  { id:'spin', title:'Spin axis / frame-dragging', tone:'spin',
+    pos:()=>new THREE.Vector3(0,bhParams.mass*3.4,0),
+    explain:'The hole drags spacetime around its spin axis (the <b>Lense–Thirring</b> effect). Every geodisc in this scene is integrated in the Kerr metric, so the dragging is not painted on — it is in the paths the photons take.' },
+];
+const labelEls={};
+labelDefs.forEach(def=>{ const el=document.createElement('div'); el.className='label3d'+(def.tone?' '+def.tone:'');
+  el.textContent=def.title; el.addEventListener('click',(ev)=>{ev.stopPropagation();showPopover(def,ev);}); document.body.appendChild(el); labelEls[def.id]=el; });
+function projectToScreen(world){ const v=world.clone().project(camera);
+  return { x:(v.x*0.5+0.5)*window.innerWidth, y:(-v.y*0.5+0.5)*window.innerHeight, visible:v.z>-1&&v.z<1 }; }
+
+// ====================== UI ======================
+const ui={ rotate:g('btnRotate'), labels:g('btnLabels'), disk:g('btnDisk'), ergo:g('btnErgo'),
+  quality:g('btnQuality'), fall:g('btnFall'), bhMass:g('bhMass'), bhSpin:g('bhSpin'),
+  vMass:g('vMass'), vSpin:g('vSpin'), readout:g('readout'),
+  focusClose:g('focusClose'), focusDisk:g('focusDisk'), focusWide:g('focusWide') };
+function g(id){ return document.getElementById(id); }
+const state={ showLabels:true, falling:false, fallT:0, fallStartPos:new THREE.Vector3(), fallStartDist:0, fallPhase:'' };
+
+ui.rotate.onclick=()=>{ controls.autoRotate=!controls.autoRotate; ui.rotate.classList.toggle('on'); ui.rotate.textContent=controls.autoRotate?'On':'Off'; };
+ui.labels.onclick=()=>{ state.showLabels=!state.showLabels; ui.labels.classList.toggle('on'); ui.labels.textContent=state.showLabels?'On':'Off'; };
+ui.disk.onclick=()=>{ const on=bhMaterial.uniforms.uDiskOn.value<0.5; bhMaterial.uniforms.uDiskOn.value=on?1:0; ui.disk.classList.toggle('on',on); ui.disk.textContent=on?'On':'Off'; };
+ui.ergo.onclick=()=>{ const on=bhMaterial.uniforms.uErgoOn.value<0.5; bhMaterial.uniforms.uErgoOn.value=on?1:0; ui.ergo.classList.toggle('on',on); ui.ergo.textContent=on?'On':'Off'; };
+ui.quality.onclick=()=>{ qualityHigh=!qualityHigh; stepCount=qualityHigh?130:72;
+  bhMaterial.uniforms.uSteps.value=stepCount; ui.quality.classList.toggle('on',!qualityHigh);
+  ui.quality.textContent=qualityHigh?'High':'Low'; onResize(); };
+
+function syncReadout(){
+  ui.vMass.textContent=bhParams.mass.toFixed(2);
+  ui.vSpin.textContent=bhParams.spin.toFixed(3);
+  const R=kerrRadii(bhParams.spin);
+  ui.readout.innerHTML=`r₊ = <b>${R.rp.toFixed(3)}</b> M &nbsp; ISCO = <b>${R.iscoPro.toFixed(2)}</b> M<br>photon ⟳ <b>${R.phPro.toFixed(2)}</b> / ⟲ ${R.phRet.toFixed(2)} M`;
+}
+function rebuild(){
+  bhParams.mass=parseFloat(ui.bhMass.value); bhParams.spin=parseFloat(ui.bhSpin.value);
+  const R=kerrRadii(bhParams.spin);
+  bhMaterial.uniforms.uM.value=bhParams.mass/2;
+  bhMaterial.uniforms.uA.value=bhParams.spin;
+  bhMaterial.uniforms.uRplus.value=R.rp;
+  bhMaterial.uniforms.uDiskIn.value=R.iscoPro;
+  buildProxies(); syncReadout();
+}
+[ui.bhMass,ui.bhSpin].forEach(el=>el.addEventListener('input',rebuild));
+
+function focusOn(distance,height,dir){ controls.target.copy(BH_POS);
+  const d=(dir||new THREE.Vector3(1,0.4,1.2)).clone().normalize();
+  camera.position.copy(BH_POS).addScaledVector(d,distance).add(new THREE.Vector3(0,height,0)); controls.update(); }
+ui.focusClose.onclick=()=>focusOn(bhParams.mass*6,bhParams.mass*1.4);
+ui.focusDisk.onclick =()=>focusOn(bhParams.mass*9,bhParams.mass*5.5,new THREE.Vector3(0.12,1.0,0.2));
+ui.focusWide.onclick =()=>focusOn(bhParams.mass*15,bhParams.mass*4);
+
+// ====================== fall ======================
+const narrationEl=g('fallNarration'),fallTitle=g('fallTitle'),fallBody=g('fallBody'),fallDist=g('fallDist');
+const narrations={
+  approach:{title:'Approaching the Kerr hole',body:'Falling in. Because the hole spins, the background is not just bent but <b>swept sideways</b> — frame-dragging twists the incoming light around the rotation axis.'},
+  isco:{title:'Crossing the ISCO',body:'You pass the innermost stable orbit. With spin, this edge sits deeper than the Schwarzschild 6M — a co-rotating path holds on much closer before plunging.'},
+  photon:{title:'Through the photon region',body:'A spinning hole has a whole <b>shell</b> of photon orbits, not a single sphere. Light here is dragged strongly in the direction of rotation.'},
+  horizon:{title:'Approaching the horizon',body:'The horizon is smaller now (r₊ < 2M). Inside the surrounding <b>ergosphere</b> you could not stop rotating even if you fired engines straight back — spacetime itself is flowing.'},
+  crossing:{title:'Crossing the horizon',body:'No local jolt, but every outward signal is trapped. For a Kerr hole the interior even hides a second (inner) horizon beyond this one.'},
+  inside:{title:'Inside the horizon',body:'The ring singularity lies ahead. Kerr geometry is strange within — but no light escapes to show it, so the view goes dark.'},
+};
+function setNarration(k){ const n=narrations[k]; if(!n)return; fallTitle.textContent=n.title; fallBody.innerHTML=n.body; }
+function startFall(){ state.falling=true; state.fallT=0; state.fallPhase='';
+  controls.enabled=false; controls.autoRotate=false; ui.rotate.classList.remove('on'); ui.rotate.textContent='Off';
+  popover.style.display='none'; const M=bhParams.mass/2;
+  state.fallStartPos=BH_POS.clone().add(new THREE.Vector3(M*22,M*5,M*9));
+  state.fallStartDist=state.fallStartPos.distanceTo(BH_POS);
+  camera.position.copy(state.fallStartPos); controls.target.copy(BH_POS);
+  narrationEl.style.display='block'; ui.fall.textContent='Abort'; ui.fall.classList.add('on');
+  state.showLabels=false; ui.labels.classList.remove('on'); ui.labels.textContent='Off'; }
+function stopFall(){ state.falling=false; controls.enabled=true; narrationEl.style.display='none';
+  ui.fall.textContent='Fall in'; ui.fall.classList.remove('on');
+  bhMaterial.uniforms.uBlueshift.value=0; bhMaterial.uniforms.uBlackout.value=0; }
+ui.fall.onclick=()=>{ state.falling?stopFall():startFall(); };
+
+// ====================== info tabs ======================
+const tabCopy={
+  overview:`<h3>A spinning black hole</h3>
+    <p>This is the real thing: a <b>Kerr</b> black hole, rendered by integrating the full rotating-spacetime geodesic for every pixel. Slide <b>Spin a/M</b> from 0 to 0.998 and watch the symmetric Schwarzschild shadow turn <b>lopsided</b> and shift sideways.</p>
+    <p>That asymmetry is <b>frame-dragging</b> — the hole winds spacetime around with it. The disk's co-rotating side beams brighter, the horizon shrinks, and the inner disk edge (ISCO) slides inward.</p>
+    <p><b>Click any label</b> for detail; toggle the <b>Ergosphere</b> to see the frame-dragging shell. On a slower GPU, drop <b>Quality</b> to Low.</p>`,
+  spin:`<h3>What spin changes</h3>
+    <p><b>Horizon shrinks:</b> r₊ = M + √(M²−a²), from 2M (still) to M (maximal).</p>
+    <p><b>Shadow goes D-shaped:</b> prograde photon orbits move inward, retrograde ones outward, so the shadow flattens on the side spinning toward you and shifts off-center — the live readout matches the analytic Bardeen curve.</p>
+    <p><b>ISCO drops inward:</b> a co-rotating disk reaches from 6M (a=0) down toward 1M, releasing far more energy — why spin matters for quasars.</p>
+    <p><b>Ergosphere appears:</b> outside the horizon, a region where standing still is impossible. Energy can even be extracted from it (the Penrose process).</p>`,
+  howit:`<h3>How it's drawn</h3>
+    <p>Each pixel's photon is evolved with the <b>canonical Hamiltonian</b> of the Kerr metric in Boyer–Lindquist coordinates — carrying conserved energy E and axial angular momentum Lz, integrating r, θ, φ and their momenta with RK4. Forces come from the gradient of the super-Hamiltonian.</p>
+    <p>The integrator was checked before shipping: at a→0 it returns the Schwarzschild capture threshold (b = 2.6 Rs), and at high spin its shadow boundary matches the exact <b>Bardeen critical curve</b> to within a pixel.</p>
+    <p>Disk light uses the Kerr redshift/Doppler factor; rays that miss everything sample a lensed star field; rays that cross the horizon paint the shadow.</p>`,
+  reality:`<h3>What's real here</h3>
+    <p><b>Real black holes spin</b>, often near-maximally — measured for several X-ray binaries and for M87* (a ≈ 0.9). Spin is angular momentum inherited from the matter that formed and fed them.</p>
+    <p>The Event Horizon Telescope images of <b>M87*</b> and <b>Sgr A*</b> show the asymmetric photon ring and Doppler-brightened crescent this build produces from the metric.</p>
+    <p>Honest caveats: the disk is a stylized emission model (no full radiative transfer or self-shadowing), and only the outer horizon and ergosphere are drawn — not the inner horizon or the full interior.</p>`,
+};
+const tabContent=g('tabContent');
+function setTab(name){ document.querySelectorAll('#info .tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name)); tabContent.innerHTML=tabCopy[name]; }
+document.querySelectorAll('#info .tab').forEach(t=>t.addEventListener('click',()=>setTab(t.dataset.tab)));
+setTab('overview');
+
+// ====================== keyboard ======================
+const keys={};
+window.addEventListener('keydown',(e)=>{ keys[e.code]=true; if(e.code==='KeyR') focusOn(bhParams.mass*15,bhParams.mass*4); });
+window.addEventListener('keyup',(e)=>{ keys[e.code]=false; });
+function applyKeyboard(dt){ const boost=(keys['ShiftLeft']||keys['ShiftRight'])?3.5:1.0; const speed=12.0*boost;
+  const fwd=new THREE.Vector3().subVectors(controls.target,camera.position).normalize();
+  const right=new THREE.Vector3().crossVectors(fwd,camera.up).normalize(); const upv=camera.up.clone().normalize();
+  const mv=new THREE.Vector3();
+  if(keys['KeyW'])mv.addScaledVector(fwd,speed*dt); if(keys['KeyS'])mv.addScaledVector(fwd,-speed*dt);
+  if(keys['KeyA'])mv.addScaledVector(right,-speed*dt); if(keys['KeyD'])mv.addScaledVector(right,speed*dt);
+  if(keys['KeyE'])mv.addScaledVector(upv,speed*dt); if(keys['KeyQ'])mv.addScaledVector(upv,-speed*dt);
+  if(mv.lengthSq()>0){ camera.position.add(mv); controls.target.add(mv); } }
+
+// ====================== hover ======================
+const hoverTip=g('hoverTip'); const raycaster=new THREE.Raycaster(); const mouseNDC=new THREE.Vector2(); let lastHoverId=null;
+const labelDefMap=Object.fromEntries(labelDefs.map(d=>[d.id,d]));
+renderer.domElement.addEventListener('mousemove',(ev)=>{ const rect=renderer.domElement.getBoundingClientRect();
+  mouseNDC.x=((ev.clientX-rect.left)/rect.width)*2-1; mouseNDC.y=-((ev.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouseNDC,camera); const targets=[]; proxyScene.traverse(o=>{ if(o.userData&&o.userData.labelId) targets.push(o); });
+  const hits=raycaster.intersectObjects(targets,true); let found=null;
+  for(const h of hits){ let o=h.object; while(o&&!(o.userData&&o.userData.labelId)) o=o.parent; if(o){ found=o.userData.labelId; break; } }
+  if(found){ const def=labelDefMap[found]; hoverTip.className=''; if(def.tone) hoverTip.classList.add(def.tone);
+    hoverTip.innerHTML=def.title+'<div class="sub">click for details</div>'; hoverTip.style.left=ev.clientX+'px'; hoverTip.style.top=ev.clientY+'px';
+    hoverTip.style.display='block'; renderer.domElement.style.cursor='pointer'; lastHoverId=found; }
+  else { hoverTip.style.display='none'; renderer.domElement.style.cursor=''; lastHoverId=null; } });
+renderer.domElement.addEventListener('mouseleave',()=>{ hoverTip.style.display='none'; renderer.domElement.style.cursor=''; lastHoverId=null; });
+renderer.domElement.addEventListener('click',(ev)=>{ if(lastHoverId&&labelDefMap[lastHoverId]){ ev.stopPropagation(); showPopover(labelDefMap[lastHoverId],ev); } });
+
+// ====================== resize ======================
+function onResize(){ const w=window.innerWidth,h=window.innerHeight; camera.aspect=w/h; camera.updateProjectionMatrix();
+  // Hard-cap the internal buffer so per-frame cost stays bounded no matter how big the window is.
+  const capW = qualityHigh?1000.0:520.0, base = qualityHigh?0.8:0.5;
+  const scale = Math.min(base, capW/Math.max(w,1));
+  renderer.setPixelRatio(scale); renderer.setSize(w,h);
+  const dr=renderer.getDrawingBufferSize(new THREE.Vector2());
+  bhMaterial.uniforms.uResolution.value.set(dr.x,dr.y); bhMaterial.uniforms.uAspect.value=w/h;
+  bhMaterial.uniforms.uTanHalfFov.value=Math.tan(THREE.MathUtils.degToRad(camera.fov)/2); }
+window.addEventListener('resize',onResize);
+
+// ====================== build & loop ======================
+rebuild(); onResize(); focusOn(bhParams.mass*15,bhParams.mass*4);
+const _r=new THREE.Vector3(),_u=new THREE.Vector3(),_f=new THREE.Vector3();
+const clock=new THREE.Clock(); let fpsT=0,fpsN=0; const fpsEl=g('fps');
+
+function animate(){
+  const dt=Math.min(clock.getDelta(),0.05); const t=clock.elapsedTime;
+  applyKeyboard(dt);
+
+  if(state.falling){
+    state.fallT+=dt; const M=bhParams.mass/2, R=kerrRadii(bhParams.spin), totalTime=11.0;
+    const u=Math.min(state.fallT/totalTime,1.0); const eased=u*u*u;
+    const dist=state.fallStartDist*(1-eased)+R.rp*M*0.3*eased;
+    const dir=state.fallStartPos.clone().sub(BH_POS).normalize();
+    camera.position.copy(BH_POS).addScaledVector(dir,dist); camera.lookAt(BH_POS); controls.target.copy(BH_POS);
+    const rM=dist/M;
+    let phase; if(rM>R.iscoPro*1.4)phase='approach'; else if(rM>R.iscoPro)phase='isco';
+    else if(rM>R.phPro)phase='photon'; else if(rM>R.rp*1.05)phase='horizon'; else if(rM>R.rp*0.7)phase='crossing'; else phase='inside';
+    if(phase!==state.fallPhase){ state.fallPhase=phase; setNarration(phase); }
+    fallDist.textContent=`r = ${rM.toFixed(2)} M`;
+    const prox=THREE.MathUtils.clamp(1-(dist-R.rp*M)/(state.fallStartDist-R.rp*M),0,1);
+    bhMaterial.uniforms.uBlueshift.value=Math.pow(prox,1.6)*0.9;
+    bhMaterial.uniforms.uBlackout.value= rM<R.rp*1.02 ? THREE.MathUtils.clamp((R.rp*1.02-rM)/(R.rp*0.5),0,1):0.0;
+    if(state.fallT>totalTime+3){ stopFall(); focusOn(R.rp*M*9,R.rp*M*2.5); }
+  } else { controls.update(); }
+
+  camera.updateMatrixWorld();
+  _r.setFromMatrixColumn(camera.matrixWorld,0).normalize();
+  _u.setFromMatrixColumn(camera.matrixWorld,1).normalize();
+  _f.setFromMatrixColumn(camera.matrixWorld,2).multiplyScalar(-1).normalize();
+  bhMaterial.uniforms.uCamPos.value.copy(camera.position);
+  bhMaterial.uniforms.uCamRight.value.copy(_r);
+  bhMaterial.uniforms.uCamUp.value.copy(_u);
+  bhMaterial.uniforms.uCamForward.value.copy(_f);
+  bhMaterial.uniforms.uTime.value=t;
+
+  renderer.render(fsScene,fsCamera);
+
+  if(state.showLabels){
+    labelDefs.forEach(def=>{ const el=labelEls[def.id]; const p=projectToScreen(def.pos());
+      el.style.left=p.x+'px'; el.style.top=p.y+'px'; el.style.opacity=p.visible?'1':'0'; el.style.pointerEvents=p.visible?'auto':'none'; });
+  } else { labelDefs.forEach(def=>{ labelEls[def.id].style.opacity='0'; labelEls[def.id].style.pointerEvents='none'; }); }
+
+  fpsN++; fpsT+=dt; if(fpsT>=0.5){ fpsEl.textContent=Math.round(fpsN/fpsT)+' fps'; fpsN=0; fpsT=0; }
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>
